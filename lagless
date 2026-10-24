@@ -1,0 +1,41 @@
+#!/bin/sh
+# Release packages use lagless.jar; source checkouts select the independent
+# terminal or optional desktop artifact. A bundled runtime takes precedence.
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+jar="$dir/lagless.jar"
+if [ ! -f "$jar" ]; then
+    jar="$dir/cli/target/lagless-cli-standalone.jar"
+    [ "$1" = gui ] && jar="$dir/desktop/target/lagless-desktop-standalone.jar"
+fi
+if [ ! -f "$jar" ]; then
+    echo "lagless: selected edition is not built or installed." >&2
+    echo "Terminal only: mvn -pl cli -am package; desktop: mvn package" >&2
+    exit 1
+fi
+
+# A downloaded update waits beside the jar when it could not replace the
+# running one. Put it in place before starting, and again afterwards so a
+# single 'lagless update' is enough.
+apply_staged_update() {
+    [ -f "$jar.new" ] && mv -f "$jar.new" "$jar"
+    rm -f "$jar.old"
+    return 0
+}
+apply_staged_update
+
+java_bin="$dir/runtime/bin/java"
+if [ ! -x "$java_bin" ]; then
+    java_bin=$(command -v java) || {
+        echo "lagless: no Java found. Either download the bundled-runtime release," >&2
+        echo "or install a JDK 21+ and make sure java is on PATH." >&2
+        exit 1
+    }
+fi
+# One JVM per window: keep each small. lagless needs a few MB of heap;
+# without a cap the JVM may grow to a quarter of the machine's memory.
+heap=128m
+[ "$1" = gui ] && heap=512m
+"$java_bin" -Xmx"$heap" -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -jar "$jar" "$@"
+status=$?
+apply_staged_update
+exit $status

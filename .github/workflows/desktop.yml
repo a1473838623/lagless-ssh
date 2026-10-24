@@ -1,0 +1,47 @@
+name: Desktop and latency regression
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-and-package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install official fixed Oracle JDK 25.0.5.0.2
+        shell: pwsh
+        run: ./scripts/install-release-jdk.ps1
+      - name: Unit, desktop rendering and embedded SSH integration tests
+        if: runner.os == 'Windows'
+        shell: bash
+        run: mvn --batch-mode verify
+      - name: Package independent terminal and desktop runtimes
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build-dist.ps1 -Edition both -SkipBuild
+      - name: Build independent terminal and desktop runtimes
+        if: runner.os != 'Windows'
+        shell: pwsh
+        run: ./scripts/build-dist.ps1 -Edition both
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lagless-${{ matrix.os }}
+          path: |
+            dist/*.zip
+            dist/*.jar
+      - uses: actions/upload-artifact@v4
+        if: always() && runner.os == 'Windows'
+        with:
+          name: test-reports-${{ matrix.os }}
+          path: |
+            core/target/surefire-reports/
+            cli/target/surefire-reports/
+            cli/target/failsafe-reports/
+            desktop/target/surefire-reports/
+            desktop/target/desktop-preview.png

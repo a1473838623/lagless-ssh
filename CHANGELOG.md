@@ -1,0 +1,26 @@
+# Release history
+
+The source commit history is preserved so existing clones, tags, and release checksums continue to resolve. This page groups the user-facing changes across the small release candidates. Detailed notes remain under [`docs/releases/`](docs/releases/).
+
+## 0.2 desktop preview — current: [v0.2.0-rc.8.13](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.13)
+
+The 0.2 line is a **pre-release**. It adds a cross-platform desktop workspace while retaining the independent core and terminal-only edition. Recent release candidates focus on:
+
+- Local and right-side command editing, multiple sessions, connection profiles, SFTP transfers, persistent history, and in-app log viewing.
+- Windows GraalVM Native Image distribution, plus bundled-runtime desktop and terminal ZIPs for Windows, Linux, and macOS where published.
+- Rendering and input fixes for interactive programs, Chinese input, clipboard use, scrollback, and auxiliary views.
+- Optional AI assistant, output mirror, plugin support, encrypted backup/restore, update and rollback.
+- Separation of ordinary terminal history, full SSH input/output history, and application logs in [rc.8.13](docs/releases/0.2.0-rc.8.13.md).
+
+For exact behavior and caveats, read the [desktop guide](docs/desktop.md) and the release's own notes. Release assets are tied to their tagged source commits; documentation-only changes after rc.8.13 do not imply a new binary build.
+
+## 0.1 terminal line — historical
+
+The 0.1 line introduced the terminal-first SSH experience: local command editing, local history, asynchronous completion, automatic pass-through for interactive programs, and SFTP commands. The current 0.2 preview continues to offer a terminal-only package. Earlier 0.1 releases remain in the private historical archive and are not republished with the clean public source history.
+
+## Release policy
+
+- New code and binaries get a new versioned release with checksums.
+- Small fixes are grouped into concise release notes instead of rewriting older tags or force-pushing `main`.
+- The private historical archive keeps its original commits, tags, and binaries. The public repository starts from a sanitized snapshot and publishes the current preview assets; old tags are not recreated against unrelated source.
+- GitHub Actions are paused to limit usage. Release notes state which checks actually ran; a docs commit is not presented as a binary build.

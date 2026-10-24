@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>dev.lagless</groupId>
+  <artifactId>lagless-ssh</artifactId>
+  <version>0.2.0-rc.8.13</version>
+  <packaging>pom</packaging>
+  <name>Lagless SSH</name>
+  <description>Shared low-latency SSH core, standalone terminal and optional desktop client</description>
+  <modules>
+    <module>core</module>
+    <module>cli</module>
+    <module>desktop</module>
+  </modules>
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <jline.version>3.30.17</jline.version>
+    <jsch.version>2.28.7</jsch.version>
+    <junit.version>5.13.4</junit.version>
+    <sshd.version>2.19.0</sshd.version>
+  </properties>
+  <dependencyManagement>
+    <dependencies>
+      <dependency><groupId>dev.lagless</groupId><artifactId>lagless-core</artifactId><version>${project.version}</version></dependency>
+      <dependency><groupId>dev.lagless</groupId><artifactId>lagless-cli</artifactId><version>${project.version}</version></dependency>
+      <dependency><groupId>org.jline</groupId><artifactId>jline</artifactId><version>${jline.version}</version></dependency>
+      <dependency><groupId>com.github.mwiede</groupId><artifactId>jsch</artifactId><version>${jsch.version}</version></dependency>
+      <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>${junit.version}</version></dependency>
+      <dependency><groupId>org.apache.sshd</groupId><artifactId>sshd-core</artifactId><version>${sshd.version}</version></dependency>
+      <dependency><groupId>org.apache.sshd</groupId><artifactId>sshd-sftp</artifactId><version>${sshd.version}</version></dependency>
+      <dependency><groupId>com.formdev</groupId><artifactId>flatlaf</artifactId><version>3.7.2</version></dependency>
+    </dependencies>
+  </dependencyManagement>
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.14.0</version></plugin>
+        <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.3</version></plugin>
+        <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId><version>3.5.3</version></plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.4.2</version>
+          <configuration><archive><manifestEntries><Implementation-Version>${project.version}</Implementation-Version></manifestEntries></archive></configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId><version>3.6.0</version>
+          <executions>
+            <execution>
+              <phase>package</phase><goals><goal>shade</goal></goals>
+              <configuration>
+                <createDependencyReducedPom>false</createDependencyReducedPom>
+                <!-- Keep the normal module JAR for dependency resolution; distributions use this explicit runnable file. -->
+                <outputFile>${project.build.directory}/${project.build.finalName}-standalone.jar</outputFile>
+                <transformers>
+                  <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                    <mainClass>dev.lagless.Main</mainClass>
+                    <manifestEntries>
+                      <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+                      <Implementation-Version>${project.version}</Implementation-Version>
+                      <Multi-Release>true</Multi-Release>
+                      <Lagless-Distribution>${lagless.distribution}</Lagless-Distribution>
+                    </manifestEntries>
+                  </transformer>
+                  <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                </transformers>
+                <filters>
+                  <filter><artifact>*:*</artifact><excludes><exclude>META-INF/*.SF</exclude><exclude>META-INF/*.DSA</exclude><exclude>META-INF/*.RSA</exclude></excludes></filter>
+                </filters>
+              </configuration>
+            </execution>
+          </executions>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+</project>

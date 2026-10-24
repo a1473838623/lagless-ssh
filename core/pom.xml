@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>dev.lagless</groupId><artifactId>lagless-ssh</artifactId><version>0.2.0-rc.8.13</version></parent>
+  <artifactId>lagless-core</artifactId>
+  <name>Lagless low-latency core</name>
+  <dependencies>
+    <dependency><groupId>org.jline</groupId><artifactId>jline</artifactId></dependency>
+    <dependency><groupId>com.github.mwiede</groupId><artifactId>jsch</artifactId></dependency>
+    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.apache.sshd</groupId><artifactId>sshd-core</artifactId><scope>test</scope></dependency>
+  </dependencies>
+  <build>
+    <finalName>lagless-core</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <!-- Regression tests must work with java.desktop unavailable, even on graphical machines. -->
+          <argLine>--limit-modules=java.base,java.logging,java.management,java.net.http,java.security.jgss,java.xml,jdk.crypto.ec,jdk.unsupported</argLine>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

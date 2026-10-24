@@ -1,0 +1,18 @@
+{
+  "foreign": {
+    "downcalls": [
+      { "returnType": "void*", "parameterTypes": ["jlong"] },
+      { "returnType": "void*", "parameterTypes": ["void*"] },
+      { "returnType": "void", "parameterTypes": ["void*"] },
+      { "returnType": "void", "parameterTypes": ["float", "void*", "void*", "void*", "int", "int", "int", "int", "int", "float", "float", "int", "int", "void*", "void*"] },
+      { "returnType": "void*", "parameterTypes": ["void*", "void*", "void*", "void*", "void*"] }
+    ],
+    "upcalls": [
+      { "returnType": "int", "parameterTypes": ["void*", "void*", "int", "int", "void*", "void*"] },
+      { "returnType": "int", "parameterTypes": ["void*", "void*", "int", "void*", "void*"] },
+      { "returnType": "int", "parameterTypes": ["void*", "void*", "int", "void*"] },
+      { "returnType": "int", "parameterTypes": ["void*", "void*", "int", "int", "void*", "void*", "void*"] },
+      { "returnType": "void", "parameterTypes": ["int", "int", "int", "float", "float", "float", "int", "int", "void*", "void*"] }
+    ]
+  }
+}

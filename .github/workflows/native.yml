@@ -1,0 +1,51 @@
+name: Native desktop
+on:
+  workflow_dispatch:
+  push:
+    paths: ['core/**', 'cli/**', 'desktop/**', 'scripts/build-native.ps1', 'scripts/install-native-graalvm.ps1', 'scripts/install-native-graalvm-linux.sh', 'scripts/release-jdk.ps1', 'scripts/prepare-native-jdk.ps1', 'scripts/native-image/**', 'security/**', 'pom.xml', '.github/workflows/native.yml']
+  pull_request:
+    paths: ['core/**', 'cli/**', 'desktop/**', 'scripts/build-native.ps1', 'scripts/install-native-graalvm.ps1', 'scripts/install-native-graalvm-linux.sh', 'scripts/release-jdk.ps1', 'scripts/prepare-native-jdk.ps1', 'scripts/native-image/**', 'security/**', 'pom.xml', '.github/workflows/native.yml']
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install hash-pinned patched Oracle GraalVM on Linux
+        if: runner.os == 'Linux'
+        run: bash scripts/install-native-graalvm-linux.sh
+      - name: Install hash-pinned patched Oracle GraalVM on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/install-native-graalvm.ps1
+      - name: Require patched official Oracle GraalVM
+        shell: pwsh
+        run: . ./scripts/release-jdk.ps1; Get-ReleaseJdk | ConvertTo-Json -Depth 8
+      - name: Linux GUI libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libx11-dev libxext-dev libxrender-dev libxtst-dev libxi-dev libfreetype-dev libasound2-dev fontconfig fonts-noto-cjk
+      - name: Windows native build and real SSH verification
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build-native.ps1 -SkipUnitTests
+      - name: Linux native build and real SSH verification
+        if: runner.os == 'Linux'
+        run: xvfb-run -a pwsh -NoProfile -File scripts/build-native.ps1 -SkipUnitTests
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lagless-native-${{ matrix.os }}
+          path: dist/lagless-desktop-native-*.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-diagnostics-${{ matrix.os }}
+          path: |
+            desktop/target/native/*report.json
+            desktop/target/native/*desktop.png
+            desktop/target/native/metadata/
+            desktop/target/surefire-reports/
