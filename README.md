@@ -2,7 +2,7 @@
 
 **Keep typing when the network cannot keep up.** Lagless makes SSH feel responsive on slow or unstable connections by letting you write commands locally while SSH communication happens in the background. Use it in your existing terminal or in the desktop app. Nothing needs to be installed on the SSH server.
 
-[简体中文](README.zh-CN.md) · [Download](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.13) · [Desktop guide](docs/desktop.md) · [Terminal/core guide](docs/core.md) · [Plugin guide](docs/plugins.md)
+[简体中文](README.zh-CN.md) · [Download](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.13) · [Desktop guide](docs/desktop.md) · [Terminal/core guide](docs/core.md) · [Plugin guide](docs/plugins.md) · [LINUX DO](https://linux.do/)
 
 ![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue) ![Java 21+](https://img.shields.io/badge/source-Java%2021%2B-0b7f70) ![Desktop preview](https://img.shields.io/badge/desktop-0.2.0%20preview-orange)
 
@@ -104,7 +104,7 @@ If Lagless makes a slow connection usable, **[star the repository](https://githu
 
 Share the project with people who administer servers over distant or unreliable links. Contributions and documentation fixes are welcome; start with [CONTRIBUTING.md](CONTRIBUTING.md). See the [release history](CHANGELOG.md) for the current desktop preview and the stable terminal line.
 
-We appreciate the [LINUX DO community](https://linux.do/) and its support for open-source projects.
+Lagless SSH recognizes the [LINUX DO community](https://linux.do/) and appreciates its support for open-source projects and technical exchange.
 
 ## License
 
