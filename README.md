@@ -1,18 +1,22 @@
 # Lagless SSH
 
-**Keep typing when the network cannot keep up.** Lagless brings local command editing, local history, and asynchronous completion to SSH over slow or unstable links. Use it inside your existing terminal, or choose the desktop workspace. Nothing needs to be installed on the SSH server.
+**Keep typing when the network cannot keep up.** Lagless makes SSH feel responsive on slow or unstable connections by letting you write commands locally while SSH communication happens in the background. Use it in your existing terminal or in the desktop app. Nothing needs to be installed on the SSH server.
 
 [简体中文](README.zh-CN.md) · [Download](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.13) · [Desktop guide](docs/desktop.md) · [Terminal/core guide](docs/core.md) · [Plugin guide](docs/plugins.md)
 
 ![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue) ![Java 21+](https://img.shields.io/badge/source-Java%2021%2B-0b7f70) ![Desktop preview](https://img.shields.io/badge/desktop-0.2.0%20preview-orange)
 
+## Why Lagless?
+
+Imagine working on a server over a congested Wi-Fi connection or a distant network. In a regular SSH session, the server echoes what you type. When that echo is delayed, even fixing a typo can feel like fighting the cursor.
+
+Lagless separates **your typing from the network wait**. It shows the command you are writing immediately on your own computer, so moving the cursor, editing text, and browsing command history stay smooth. Press Enter when the command is ready; Lagless then sends the complete line over SSH. It also fetches completion suggestions in the background, without making you stop typing to wait for them. This is the key idea behind its asynchronous SSH workflow: a slow connection can delay the remote result, but it does not have to delay your next keystroke.
+
+The remote command still needs a working connection to run and return output. Programs that need individual keys, such as `vim`, can receive them directly, so their response still depends on network latency.
+
 ![Lagless desktop workspace with sample terminal output and a local command editor](docs/media/local-editor.png)
 
 *The gallery is rendered from the actual desktop UI with sample `example.invalid` hosts and sample output. It is not a live SSH session.*
-
-## Why Lagless?
-
-On a high latency connection, a conventional SSH shell waits for a round trip before showing each keystroke. Lagless recognizes a shell prompt and edits the command **locally**. Your cursor, deletions, history search, and draft remain responsive; pressing Enter sends the completed line. Completion runs on a second SSH channel without blocking the editor. When a program needs direct input, Lagless passes keys through.
 
 The **core remains independent**. You can install only the terminal edition and run `lagless user@host` in Windows Terminal or another terminal. The desktop app uses that same core and adds connection management, parallel sessions, SFTP, logs, and optional tools.
 
