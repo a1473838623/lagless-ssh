@@ -86,6 +86,7 @@ public final class GalleryCapture {
                         ImageIO.read(output.resolve("output-mirror.png").toFile()),
                         ImageIO.read(output.resolve("ai-assistant.png").toFile())),
                         output.resolve("workspace-tour.gif"), 1600);
+                writeSocialCard(output.resolve("local-editor.png"), output.resolve("social-preview.png"));
             } catch (Exception error) {
                 throw new RuntimeException(error);
             } finally {
@@ -179,5 +180,42 @@ public final class GalleryCapture {
         } finally {
             writer.dispose();
         }
+    }
+
+    private static void writeSocialCard(Path screenshot, Path target) throws Exception {
+        BufferedImage image = new BufferedImage(1280, 640, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = image.createGraphics();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g.setPaint(new GradientPaint(0, 0, new Color(0x0d1424), 1280, 640, new Color(0x193a53)));
+            g.fillRect(0, 0, 1280, 640);
+            g.setColor(new Color(0x0b8f7d));
+            g.fillRoundRect(58, 66, 80, 80, 22, 22);
+            g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 57));
+            g.setColor(Color.WHITE);
+            g.drawString("L", 80, 126);
+            g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 30));
+            g.drawString("LAGLESS SSH", 160, 119);
+            g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 54));
+            g.drawString("SSH at your speed.", 58, 250);
+            g.setColor(new Color(0x9ad8cd));
+            g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 25));
+            g.drawString("Local command editing", 61, 317);
+            g.drawString("on slow or unstable links.", 61, 352);
+            g.setColor(new Color(0xc7d7e6));
+            g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 19));
+            g.drawString("Standalone terminal core  •  Desktop workspace", 61, 566);
+            BufferedImage screen = ImageIO.read(screenshot.toFile());
+            g.setColor(new Color(0x315568));
+            g.fillRoundRect(620, 140, 622, 394, 18, 18);
+            g.drawImage(screen, 631, 151, 600, 375, null);
+            g.setColor(new Color(0x8ba9b9));
+            g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 13));
+            g.drawString("Product UI · sample data", 1050, 552);
+        } finally {
+            g.dispose();
+        }
+        ImageIO.write(image, "png", target.toFile());
     }
 }

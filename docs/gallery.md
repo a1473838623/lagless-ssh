@@ -30,6 +30,12 @@ These images are rendered from the product's Swing components with sample `examp
 
 The AI panel is shown before a service is configured; no AI response is invented in the image. / AI 面板截图中尚未配置服务，也未伪造 AI 回答。
 
+## Share card / 分享封面
+
+![Lagless SSH social preview card](media/social-preview.png)
+
+The card uses the same sample-data screenshot. It is sized for repository social previews and launch posts. / 分享封面使用同一张示例截图，可用于项目社交预览和发布帖。
+
 ## Refresh the gallery / 重新生成图片
 
 On Windows with JDK 21+ and Maven, run `./scripts/generate-gallery.ps1`. It builds without running tests, then renders the media above. The renderer uses a temporary Lagless home and a compatibility paint path so terminal text is included in offscreen captures. It does not access saved user connections.

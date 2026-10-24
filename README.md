@@ -41,7 +41,7 @@ The input below is drawn locally while the SSH session waits. The desktop editor
 | --- | --- |
 | ![Connection picker](docs/media/welcome.png) | ![Editable output mirror](docs/media/output-mirror.png) |
 
-The [full gallery](docs/gallery.md) includes larger screenshots and explains which parts use sample data.
+The [full gallery](docs/gallery.md) includes larger screenshots and explains which parts use sample data. A [share kit](docs/launch-kit.md) has short English and Chinese introductions and a social preview image.
 
 ## Download and start
 
@@ -52,7 +52,7 @@ The [full gallery](docs/gallery.md) includes larger screenshots and explains whi
 | Windows x64, native desktop | `lagless-desktop-native-0.2.0-rc.8.13-windows-x64.zip` | Extract the full ZIP; run `Lagless.exe` |
 | Linux x64, native desktop | `lagless-desktop-native-0.2.0-rc.8.13-linux-x64.zip` | Extract the full ZIP; run the bundled `Lagless` executable |
 | Windows/Linux/macOS, desktop with bundled runtime | `lagless-0.2.0-rc.8.13-<platform>.zip` | Extract and run `lagless.cmd gui` on Windows or `./lagless gui` elsewhere |
-| Terminal only, bundled runtime | `lagless-terminal-0.2.0-rc.8.13-<platform>.zip` | Extract and run `lagless user@host` |
+| Terminal only, bundled runtime | `lagless-terminal-0.2.0-rc.8.13-<platform>.zip` | Extract and run `lagless.cmd user@host` on Windows or `./lagless user@host` elsewhere |
 | Java 21+ already installed | `lagless.jar` (desktop) or `lagless-terminal.jar` | See [install details](docs/core.md) |
 
 Use the asset matching your platform and architecture. Release ZIPs include checksums in `SHA256SUMS.txt`. The Windows native package does not require a separate Java installation.

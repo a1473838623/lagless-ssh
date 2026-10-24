@@ -18,6 +18,8 @@
 
 如果 Lagless 帮你在高延迟网络下更顺畅地操作 SSH，欢迎[给项目点 Star](https://github.com/a1473838623/lagless-ssh)，也欢迎提交可复现的问题或改进建议。
 
+[宣传封面与中英文分享文案](docs/launch-kit.md)
+
 ## 独立 core 与终端版
 
 低延迟核心保留为独立 `core` 模块。只使用命令行时，安装 `lagless-terminal-<版本>-<平台>-<架构>.zip` 即可，在 Windows Terminal、系统终端等现有终端中直接运行 `lagless user@host`，无需安装图形客户端。
