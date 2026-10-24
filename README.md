@@ -18,13 +18,17 @@ The remote command still needs a working connection to run and return output. Pr
 
 *The gallery is rendered from the actual desktop UI with sample `example.invalid` hosts and sample output. It is not a live SSH session.*
 
-The **core remains independent**. You can install only the terminal edition and run `lagless user@host` in Windows Terminal or another terminal. The desktop app uses that same core and adds connection management, parallel sessions, SFTP, logs, and optional tools.
+## Highlights
+
+- **Responsive input over slow links.** Write and revise commands locally; SSH sends the finished line when you press Enter, while completion suggestions are fetched in the background.
+- **Full-screen, live-updating tools.** Keep working inside Claude Code, Codex CLI, `vim`, and similar programs as they redraw. Claude Code's input line can be edited locally; the desktop editor can send a draft directly to the running program, including Codex CLI. The terminal view handles continuous redraws and scrolling.
+- **Your choice of interface.** Use the independent terminal core in a terminal you already like, or open the desktop app for concurrent sessions, files, logs, and optional tools. Neither edition requires software on the server.
 
 | | Terminal edition | Desktop edition |
 | --- | --- | --- |
 | Local shell editing and history | Yes | Yes |
 | Asynchronous completion | Yes | Yes |
-| Interactive programs | Pass through, with local prediction where supported | Terminal view and configurable wheel behavior |
+| Interactive programs | Claude Code, Codex CLI, and other full-screen tools; local prediction where supported | Live terminal view, direct sending from the local editor, and configurable scrolling |
 | SSH jump hosts and SFTP | CLI commands | Connection profiles and file manager |
 | Multiple sessions, local editor, logs, AI and plugins | — | Yes |
 | Server installation | None | None |

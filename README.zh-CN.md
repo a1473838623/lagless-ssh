@@ -16,6 +16,12 @@ Lagless 把**本地输入和网络等待分开**。命令先在你的电脑上�
 
 *演示图由真实界面组件生成；主机 `example.invalid` 与输出是示例数据，没有连接真实 SSH。*
 
+## 主要亮点
+
+- **网络慢，输入仍跟手。** 命令在本地编辑，按回车后再整行发送；补全在后台查询，不挡住继续输入。
+- **支持全屏、实时刷新的交互程序。** Claude Code、Codex CLI、`vim` 等程序持续重绘时也能直接操作。Claude Code 的输入行可在本地编辑；桌面本地编辑框可把草稿直接发送给正在运行的 Codex CLI 等程序，无需退出回到 shell。终端视图支持持续重绘和滚动查看。
+- **终端版和桌面版共用核心。** 只想用现有终端，就安装独立终端版；需要多连接、文件管理和日志，再使用桌面版。两者都不要求在服务器安装 Lagless。
+
 ### 本地编辑演示
 
 ![在本地编辑框中输入命令](docs/media/local-editing.gif)
@@ -48,9 +54,9 @@ Linux/macOS 用 `./lagless gui`。桌面端复用原有低延迟终端内核，�
 
 桌面也支持真正的 **GraalVM Native Image 原生包**：解压 `lagless-desktop-native-<版本>-windows-x64.zip` 后双击 `Lagless.exe`，不需要 Java。rc.8.13 使用 Oracle 官方已修复 CVE-2026-91403 的 GraalVM 25.0.5 安全更新线构建原生 EXE（官方归档 SHA-256 固定校验），终端和 JVM 桌面包使用 Oracle JDK 25.0.5.0.2；详见 [本次发布说明](docs/releases/0.2.0-rc.8.13.md)。构建入口和限制见 [原生桌面版](docs/native-image.md)。
 
-## 它解决什么
+## 终端核心如何工作
 
-普通 ssh 每个按键都要等服务器回显，链路差的时候光标跟不上手。lagless 在 shell 提示符出现时接管键盘：
+普通 SSH 的输入由服务器回显，链路差的时候光标跟不上手。Lagless 在 shell 提示符出现时接管键盘：
 
 - 方向键、Home/End、Ctrl-A/E、Ctrl-W 等都在本地完成，任意位置插入删除，零延迟。
 - 上下键、Ctrl-R 翻的是本地历史。连接时会把远程 `.bash_history` / `.zsh_history` 末尾 500 条并进来。
@@ -274,13 +280,3 @@ LAGLESS_TEST_HOST=localhost LAGLESS_TEST_PORT=2222 LAGLESS_TEST_USER=ubuntu LAGL
 ```
 
 它通过虚拟终端驱动客户端，验证行内编辑、回显吞掉、历史、Ctrl-C、vim 备用屏保持透传、异步补全、`:put`/`:get` 往返，以及命令执行期间抢先输入的三种情形（保留一次、可删掉、被程序消费后不回填）。`scripts/start-test-sshd.sh` 在 WSL 或任意 Linux 里以普通用户身份起一个 2222 端口的 sshd 供测试用，`stop` 参数停止。
-
-## 已知限制
-
-- 本地预回显只在备用屏里生效（Claude Code 默认的全屏界面、vim、tmux 等）。不进备用屏、直接在滚动区里画界面的程序（比如关闭全屏模式的 Claude Code、python REPL）仍然等远程回显。
-
-- 提示符学习靠结尾字符。如果 shell 提示符与某个程序的提示符结尾相同（比如都以 `> ` 结尾），需要 `--prompt-regex`。
-- 未闭合引号回车后远程会显示 PS2 续行提示符，此时处于透传模式，续行内容逐字符发送。
-- 补全的 cwd 跟踪依赖 Linux 的 `/proc` 或 `pwdx`，macOS 远程降级为相对家目录。
-- zsh 的 autosuggestions、fish 的语法高亮会在回显里带额外字符，回显识别可能失败，表现为命令行重复显示一次，不影响执行。
-- 第二通道需要 sshd 允许多会话（默认允许）。被限制时补全自动禁用。

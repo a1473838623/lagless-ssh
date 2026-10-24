@@ -57,6 +57,14 @@ pwsh -File scripts/build-dist.ps1 -Edition both
 
 终端版只下载 `lagless-terminal.jar`，没有该资产时保持现有版本；不回退到图形客户端。下载、回滚均校验 JAR 类型，防止用 GUI 包覆盖终端版。两种类型的后台更新检查时间戳也分别保存。旧 JAR 没有类型字段时，会根据是否包含图形客户端代码判断类型，早期纯 CLI 同样保持终端版；旧完整客户端仍可使用 `lagless.jar` 更新。
 
+## 兼容性细节
+
+本地编辑不依赖远端回显；全屏程序中的预回显则需要能识别输入位置，目前主要用于备用屏中的输入。远端程序的实际处理和画面更新仍受网络速度影响。
+
+- 如果 shell 提示符与交互程序的提示符结尾相同，可用 `--prompt-regex` 指定 shell 提示符。未闭合引号进入续行提示符后，后续输入按键透传。
+- 路径补全通过第二个 SSH 通道读取远端目录。服务器禁止多会话时，补全自动禁用；远端为 macOS 且无法跟踪当前目录时，相对路径以家目录为准。
+- zsh autosuggestions 或 fish 语法高亮可能改变远端回显，导致命令行偶尔重复显示；命令仍会正常执行。
+
 ## 集成 core
 
 `mvn -pl core -am install` 将 core 安装到本机 Maven 仓库，然后声明 `dev.lagless:lagless-core:0.2.0-rc.7` 依赖。core JAR 不内嵌第三方依赖，Maven 会传递引入 JLine 和 JSch。已有集成使用的 `dev.lagless` 包名保持不变。
