@@ -32,6 +32,8 @@ Lagless 把**本地输入和网络等待分开**。命令先在你的电脑上�
 
 如果 Lagless 帮你在高延迟网络下更顺畅地操作 SSH，欢迎[给项目点 Star](https://github.com/a1473838623/lagless-ssh)，也欢迎提交可复现的问题或改进建议。
 
+感谢 [LINUX DO 社区](https://linux.do/) 对开源项目的支持。
+
 [宣传封面与中英文分享文案](docs/launch-kit.md)
 
 ## 独立 core 与终端版

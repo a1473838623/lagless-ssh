@@ -104,6 +104,8 @@ If Lagless makes a slow connection usable, **[star the repository](https://githu
 
 Share the project with people who administer servers over distant or unreliable links. Contributions and documentation fixes are welcome; start with [CONTRIBUTING.md](CONTRIBUTING.md). See the [release history](CHANGELOG.md) for the current desktop preview and the stable terminal line.
 
+We appreciate the [LINUX DO community](https://linux.do/) and its support for open-source projects.
+
 ## License
 
 Lagless SSH is licensed under [Apache License 2.0](LICENSE). Third-party dependencies retain their own licenses.
