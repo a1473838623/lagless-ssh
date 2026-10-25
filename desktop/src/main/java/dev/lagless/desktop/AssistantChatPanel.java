@@ -53,24 +53,40 @@ final class AssistantChatPanel extends JPanel {
         boolean log(){return kind.endsWith(I18n.t("日志","log"))||kind.equals(I18n.t("终端历史","Terminal history"))||kind.equals(I18n.t("全量输入输出历史","Full input/output history"));}
     }
     private static final class Conversation {
-        String title;final JPanel panel=new JPanel(new BorderLayout());final JEditorPane transcript=new JEditorPane("text/html","");final JScrollPane scroll;final StringBuilder markdown=new StringBuilder();final List<Message> messages=new ArrayList<>();final ConcurrentLinkedQueue<String> pending=new ConcurrentLinkedQueue<>();
+        String title;final JPanel panel=new JPanel(new BorderLayout());final Transcript transcript=new Transcript();final JScrollPane scroll;final StringBuilder markdown=new StringBuilder();final List<Message> messages=new ArrayList<>();final ConcurrentLinkedQueue<String> pending=new ConcurrentLinkedQueue<>();
         volatile boolean busy;volatile long generation;volatile Future<?> future;
         Conversation(String title){this.title=title;transcript.setEditable(false);transcript.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES,Boolean.TRUE);transcript.setFont(DesktopFonts.ui().deriveFont(13f));transcript.setBorder(new EmptyBorder(15,18,15,18));transcript.setBackground(new Color(0xf6f8fa));transcript.setCaret(new DefaultCaret(){@Override public int getBlinkRate(){return 0;}@Override public void setVisible(boolean visible){super.setVisible(false);}});transcript.setCaretColor(transcript.getBackground());scroll=new JScrollPane(transcript);panel.add(scroll,BorderLayout.CENTER);panel.putClientProperty("conversation",this);}
         @Override public String toString(){return title;}
     }
 
+    /** Reply area; without wrapping, long lines keep their width and scroll sideways. */
+    private static final class Transcript extends JEditorPane {
+        boolean wrap=true;
+        Transcript(){super("text/html","");}
+        @Override public boolean getScrollableTracksViewportWidth(){
+            if(wrap)return true;
+            Container parent=SwingUtilities.getUnwrappedParent(this);
+            return parent instanceof JViewport viewport&&viewport.getWidth()>getUI().getPreferredSize(this).width;
+        }
+    }
+    private final JCheckBox wrapReplies=new JCheckBox(I18n.t("自动换行","Wrap lines"));
+    private void applyWrap(Conversation c){if(c.transcript.wrap==wrapReplies.isSelected())return;c.transcript.wrap=wrapReplies.isSelected();c.scroll.setHorizontalScrollBarPolicy(c.transcript.wrap?ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER:ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);c.transcript.revalidate();c.transcript.repaint();}
     AssistantChatPanel(SessionPane session){
         super(new BorderLayout(8,8));this.session=session;setBorder(new EmptyBorder(8,8,8,8));
         store=session.app.home.resolve("desktop/assistant-sessions").resolve(safe(session.profile.id())+".json");
 
         sourceLanguage.setColumns(9);targetLanguage.setColumns(9);
         JPanel heading=new JPanel(new BorderLayout(4,4));heading.add(new JLabel(I18n.t("AI 助手对话","AI assistant chat")),BorderLayout.NORTH);
-        JPanel historyActions=new JPanel(new WrapLayout(FlowLayout.LEADING,5,3));JButton fresh=button(I18n.t("新对话","New chat"),this::newConversation);JButton remove=button(I18n.t("删除历史","Delete history"),this::deleteConversation);historyActions.add(conversations);historyActions.add(fresh);historyActions.add(remove);heading.add(historyActions,BorderLayout.CENTER);add(heading,BorderLayout.NORTH);
+        JPanel historyActions=new JPanel(new WrapLayout(FlowLayout.LEADING,5,3));JButton fresh=button(I18n.t("新对话","New chat"),this::newConversation);JButton remove=button(I18n.t("删除历史","Delete history"),this::deleteConversation);historyActions.add(conversations);historyActions.add(fresh);historyActions.add(remove);
+        wrapReplies.setName("assistant-wrap");wrapReplies.setFocusable(false);wrapReplies.setToolTipText(I18n.t("关闭后，回复中的长行保持原样，可横向滚动查看","When off, long lines in replies keep their width and scroll sideways"));
+        wrapReplies.setSelected(Boolean.parseBoolean(session.app.preferences.get("assistant-wrap","true")));
+        wrapReplies.addActionListener(e->{session.app.preferences.set("assistant-wrap",Boolean.toString(wrapReplies.isSelected()));for(int i=0;i<conversations.getItemCount();i++)applyWrap(conversations.getItemAt(i));});
+        historyActions.add(wrapReplies);heading.add(historyActions,BorderLayout.CENTER);add(heading,BorderLayout.NORTH);
 
         JPanel body=new JPanel(new BorderLayout(0,8));
         conversations.setName("assistant-conversations");conversations.setPrototypeDisplayValue(new Conversation(I18n.t("YYYY年MM月DD日 HH:mm · 对话标题","YYYY-MM-DD HH:mm · chat title")));conversations.setPreferredSize(new Dimension(220,conversations.getPreferredSize().height));conversations.addActionListener(e->{if(!changingSelection)updateSendState();});
         loadConversations();if(conversations.getItemCount()==0)newConversation();
-        Conversation selected=current();if(selected!=null)body.add(selected.panel,BorderLayout.CENTER);add(body,BorderLayout.CENTER);
+        Conversation selected=current();if(selected!=null){applyWrap(selected);body.add(selected.panel,BorderLayout.CENTER);}add(body,BorderLayout.CENTER);
         conversations.addActionListener(e->showSelected(body));
 
         JPanel composerArea=new JPanel();composerArea.setLayout(new BoxLayout(composerArea,BoxLayout.Y_AXIS));
@@ -235,7 +251,7 @@ final class AssistantChatPanel extends JPanel {
     private void flushStreams(){for(int i=0;i<conversations.getItemCount();i++){Conversation c=conversations.getItemAt(i);if(c!=null)flushStream(c);}}
     private void flushStream(Conversation c){String delta;boolean changed=false;while((delta=c.pending.poll())!=null){c.markdown.append(delta);changed=true;}if(changed)render(c);}
     void close(){streamRefresh.stop();for(int i=0;i<conversations.getItemCount();i++){Conversation c=conversations.getItemAt(i);if(c!=null&&c.future!=null)c.future.cancel(true);}synchronized(pastedImages){for(Path file:pastedImages)try{Files.deleteIfExists(file);}catch(IOException ignored){}pastedImages.clear();}persist();}
-    private void render(Conversation c){StringBuilder html=new StringBuilder("<html><body style='font-family:sans-serif;font-size:13px;color:#17263b;background:#f6f8fa'>");for(Message m:c.messages)html.append(bubble(m.role,m.text));if(!c.markdown.isEmpty())html.append(bubble("assistant",c.markdown.toString()));if(c.messages.isEmpty()&&c.markdown.isEmpty())html.append(I18n.t("<div style='color:#74839a;margin-top:36px' align='center'>输入问题，或附加终端输出、日志、图片和文件</div>","<div style='color:#74839a;margin-top:36px' align='center'>Ask a question, or attach terminal output, logs, images and files</div>"));html.append("</body></html>");c.transcript.setText(html.toString());SwingUtilities.invokeLater(()->c.scroll.getVerticalScrollBar().setValue(c.scroll.getVerticalScrollBar().getMaximum()));}
+    private void render(Conversation c){applyWrap(c);StringBuilder html=new StringBuilder("<html><body style='font-family:sans-serif;font-size:13px;color:#17263b;background:#f6f8fa'>");for(Message m:c.messages)html.append(bubble(m.role,m.text));if(!c.markdown.isEmpty())html.append(bubble("assistant",c.markdown.toString()));if(c.messages.isEmpty()&&c.markdown.isEmpty())html.append(I18n.t("<div style='color:#74839a;margin-top:36px' align='center'>输入问题，或附加终端输出、日志、图片和文件</div>","<div style='color:#74839a;margin-top:36px' align='center'>Ask a question, or attach terminal output, logs, images and files</div>"));html.append("</body></html>");c.transcript.setText(html.toString());SwingUtilities.invokeLater(()->c.scroll.getVerticalScrollBar().setValue(c.scroll.getVerticalScrollBar().getMaximum()));}
     private static String bubble(String role,String text){boolean user=role.equals("user");String bg=user?"#d9f1eb":"#ffffff",name=user?I18n.t("你","You"):I18n.t("AI助手","AI assistant"),align=user?"right":"left";return "<table width='100%' cellpadding='0' cellspacing='0'><tr><td align='"+align+"'><table width='78%' bgcolor='"+bg+"' cellpadding='9' cellspacing='0'><tr><td><b style='color:#168b78'>"+name+"</b><br>"+markdown(text)+"</td></tr></table></td></tr></table><br>";}
     private static String escapeHtml(String text){return text.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\n","<br>");}
     private static String markdown(String source){StringBuilder out=new StringBuilder();boolean code=false;for(String raw:source.split("\\R",-1)){String line=raw;if(line.startsWith("```")){out.append(code?"</code></pre>":"<pre style='background:#eef1f4;padding:8px'><code>");code=!code;continue;}String safe=escapeHtml(line);if(code){out.append(safe).append("\n");continue;}if(line.startsWith("### "))safe="<h3>"+escapeHtml(line.substring(4))+"</h3>";else if(line.startsWith("## "))safe="<h2>"+escapeHtml(line.substring(3))+"</h2>";else if(line.startsWith("# "))safe="<h1>"+escapeHtml(line.substring(2))+"</h1>";else if(line.startsWith("- ")||line.startsWith("* "))safe="• "+escapeHtml(line.substring(2));else if(line.startsWith("> "))safe="<blockquote>"+escapeHtml(line.substring(2))+"</blockquote>";else safe=safe.replaceAll("`([^`]+)`","<code style='background:#eef1f4'>$1</code>").replaceAll("\\*\\*([^*]+)\\*\\*","<b>$1</b>").replaceAll("\\*([^*]+)\\*","<i>$1</i>");out.append(safe).append("<br>");}if(code)out.append("</code></pre>");return out.toString();}

@@ -45,7 +45,7 @@ public final class SwingTerminal extends JComponent implements AutoCloseable,Inp
         @Override protected boolean removeEldestEntry(java.util.Map.Entry<String,Color[]> e){return size()>256;}
     };
     private double wheelPosition;private boolean wheelPositionValid;
-    private int scrollOffset;private long lastBarUpdate;
+    private int scrollOffset;private long lastBarUpdate,lastPresented;
     private long observedTailRevision=-1;
     private long cursorEpoch=System.nanoTime();
     private boolean cursorOn=true;
@@ -359,8 +359,13 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
             if(now-lastBarUpdate>=32_000_000L){lastBarUpdate=now;updateHistoryBar();}
             boolean phase=cursorPhase(now-cursorEpoch);
             if(terminalFocus()&&phase!=cursorOn){cursorOn=phase;if(!dirty&&!frameDirty.get()&&cachedFrame!=null&&cachedFrame.cursorVisible())repaintSurface();}
-            if(dirty||frameDirty.get()){dirty=false;repaintSurface();}
+            // The native surface can lose its image while the window is minimized,
+            // covered or the GPU is reset. Present the current frame now and then,
+            // so the terminal never stays black until the next remote output.
+            if(nativeCanvas!=null&&now-lastPresented>=500_000_000L)dirty=true;
+            if(dirty||frameDirty.get()){dirty=false;lastPresented=now;repaintSurface();}
         });redraw.setCoalesce(true);redraw.start();
+        addHierarchyListener(e->{if((e.getChangeFlags()&HierarchyEvent.SHOWING_CHANGED)!=0&&isShowing())invalidateFrame();});
         resizer.scheduleWithFixedDelay(() -> {
             flushPendingCapture(System.nanoTime());
             if(layoutResizing)return;

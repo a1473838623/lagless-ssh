@@ -67,6 +67,19 @@ extern "C" JNIEXPORT jlongArray JNICALL Java_dev_lagless_desktop_NativeGraphics_
         if(result&&!pids.empty())env->SetLongArrayRegion(result,0,static_cast<jsize>(pids.size()),pids.data());return result;
     }catch(...){lastError="Cannot query installation file users";return nullptr;}
 }
+// Windows may run an idle or background window's process in efficiency mode
+// (EcoQoS) and coarsen its timers, so the terminal feels slow when the user
+// comes back. A terminal must answer keys and frames at once: opt out.
+static void keepFullSpeed(){
+    static bool done=false;if(done)return;done=true;
+    struct Throttling {ULONG Version,ControlMask,StateMask;};
+    using SetInformation=BOOL(WINAPI*)(HANDLE,int,LPVOID,DWORD);
+    auto set=reinterpret_cast<SetInformation>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"),"SetProcessInformation"));
+    if(!set)return; // Before Windows 8 there is no process throttling to opt out of.
+    // ProcessPowerThrottling = 4; EXECUTION_SPEED = 1, IGNORE_TIMER_RESOLUTION = 4.
+    Throttling state{1,0x1|0x4,0};
+    if(!set(GetCurrentProcess(),4,&state,sizeof state)){state.ControlMask=0x1;set(GetCurrentProcess(),4,&state,sizeof state);}
+}
 struct Renderer {
     HWND window=nullptr;
     ComPtr<ID2D1Factory> factory;
@@ -83,6 +96,8 @@ struct Renderer {
     std::vector<FLOAT> advances;
     UINT16 ascii[128]{};
     float fontSize=0,emSize=0,capHeight=0;
+    int failures=0;ULONGLONG failingSince=0;
+    void lose(){brush.Reset();rendering.Reset();target.Reset();}
     bool initialize(HWND hwnd){
         window=hwnd;
         return check(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,factory.GetAddressOf()),"Direct2D factory")
@@ -158,8 +173,12 @@ struct Renderer {
         chars.resize(length);fg.resize(length);bg.resize(length);
         env->GetIntArrayRegion(characters,0,length,chars.data());env->GetIntArrayRegion(foreground,0,length,fg.data());env->GetIntArrayRegion(background,0,length,bg.data());
         if(env->ExceptionCheck())return false;
-        RECT bounds;GetClientRect(window,&bounds);UINT w=std::max<LONG>(1,bounds.right),h=std::max<LONG>(1,bounds.bottom);
-        if(!size(w,h))return false;
+        RECT bounds;GetClientRect(window,&bounds);
+        // Minimized or hidden: keep the target at its real size. Shrinking it to
+        // 1x1 here left a black window after restore until the next full frame.
+        if(IsIconic(GetAncestor(window,GA_ROOT))||bounds.right<1||bounds.bottom<1)return true;
+        UINT w=bounds.right,h=bounds.bottom;
+        if(!size(w,h))return recover();
         float sx=w/static_cast<float>(std::max(1,logicalWidth)),sy=h/static_cast<float>(std::max(1,logicalHeight));
         if(!font(requested*sy))return false;
         // Snap the grid to physical pixels. No scaling of rasterized text and no
@@ -197,8 +216,21 @@ struct Renderer {
             target->FillRectangle(D2D1::RectF(x,top,x+std::max(1.f,std::round(2*sx)),top+height),brush.Get());
         }
         HRESULT result=target->EndDraw();
-        if(result==D2DERR_RECREATE_TARGET){brush.Reset();target.Reset();InvalidateRect(window,nullptr,FALSE);return true;}
-        return check(result,"Direct2D present");
+        if(SUCCEEDED(result)){failures=0;return true;}
+        check(result,"Direct2D present");
+        return recover();
+    }
+    // Sleep, screen lock, remote desktop or a driver update can remove the
+    // GPU device. Rebuild the target and repaint instead of leaving a black
+    // window or dropping to the slow compatible renderer; give up only when
+    // rebuilding keeps failing.
+    bool recover(){
+        lose();
+        ULONGLONG now=GetTickCount64();
+        if(failures++==0)failingSince=now;
+        // A device can stay unavailable while the screen is locked; the Java
+        // side repaints periodically, so each try is cheap and never spins.
+        return failures<=8||now-failingSince<60000;
     }
 };
 extern "C" JNIEXPORT jlong JNICALL Java_dev_lagless_desktop_NativeGraphics_open(JNIEnv* env,jclass,jobject canvas){
@@ -217,7 +249,9 @@ extern "C" JNIEXPORT jlong JNICALL Java_dev_lagless_desktop_NativeGraphics_open(
         }
         awt.FreeDrawingSurface(surface);
         if(!hwnd||!IsWindow(hwnd)){lastError="Canvas HWND unavailable";return 0;}
-        auto renderer=new Renderer();if(!renderer->initialize(hwnd)){delete renderer;return 0;}return reinterpret_cast<jlong>(renderer);
+        auto renderer=new Renderer();if(!renderer->initialize(hwnd)){delete renderer;return 0;}
+        keepFullSpeed();
+        return reinterpret_cast<jlong>(renderer);
     }catch(...){lastError="Native display initialization failed";return 0;}
 }
 extern "C" JNIEXPORT jboolean JNICALL Java_dev_lagless_desktop_NativeGraphics_draw(JNIEnv* env,jclass,jlong handle,jint width,jint height,jint cols,jint rows,jintArray chars,jintArray fg,jintArray bg,jint cw,jint ch,jint ascent,jint offset,jint cx,jint cy,jboolean cursor,jfloat font,jint paper){

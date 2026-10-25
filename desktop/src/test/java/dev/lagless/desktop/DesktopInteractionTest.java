@@ -68,6 +68,9 @@ class DesktopInteractionTest {
             action.setSelectedIndex(4);assertNotEquals(translate,composer.getText());assertFalse(composer.getText().isBlank());
             context.setSelectedIndex(0);assertEquals("",composer.getText());
             context.setSelectedIndex(2);composer.setText("my own words");action.setSelectedIndex(0);context.setSelectedIndex(0);assertEquals("my own words",composer.getText());
+            JCheckBox wrap=(JCheckBox)field(chat,"wrapReplies");assertTrue(wrap.isSelected());
+            @SuppressWarnings("unchecked") JComboBox<Object> chats=(JComboBox<Object>)field(chat,"conversations");JEditorPane reply=(JEditorPane)field(chats.getSelectedItem(),"transcript");
+            assertTrue(reply.getScrollableTracksViewportWidth());wrap.doClick();assertFalse(reply.getScrollableTracksViewportWidth());assertEquals("false",app[0].preferences.get("assistant-wrap","true"));wrap.doClick();assertTrue(reply.getScrollableTracksViewportWidth());
         }catch(Exception e){throw new RuntimeException(e);}});}finally{if(app[0]!=null){SwingUtilities.invokeAndWait(app[0]::close);assertTrue(app[0].awaitShutdown(System.nanoTime()+TimeUnit.SECONDS.toNanos(10)));}}
     }
     @Test void editorWrappingSharesTextAndDoesNotCreateLogicalNewlines()throws Exception{

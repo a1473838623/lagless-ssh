@@ -39,6 +39,7 @@ final class Workspace {
         sessionItems.add(add(session,I18n.t("文件管理","Files"),()->active().showFiles(),KeyStroke.getKeyStroke(KeyEvent.VK_E,InputEvent.CTRL_DOWN_MASK|InputEvent.SHIFT_DOWN_MASK)));
         passThrough.setToolTipText(I18n.t("仅供未被自动识别的交互程序排查兼容问题。Codex / Claude 通常已自动透传；开启后每个按键需等待网络，可能更慢。","Only for troubleshooting interactive programs that are not detected automatically. Codex / Claude are usually passed through already; when on, every key waits for the network and may be slower."));
         passThrough.addActionListener(e->{SessionPane target=active();boolean enabled=passThrough.isSelected();if(target!=null)SwingUtilities.invokeLater(()->{target.setPassThrough(enabled);passThrough.setSelected(target.passThrough());});});session.add(passThrough);sessionItems.add(passThrough);
+        sessionItems.add(add(session,I18n.t("后台会话…","Background sessions…"),()->BackgroundSessions.show(active()),KeyStroke.getKeyStroke(KeyEvent.VK_B,InputEvent.CTRL_DOWN_MASK|InputEvent.SHIFT_DOWN_MASK)));
         sessionItems.add(add(session,I18n.t("重新连接","Reconnect"),()->active().reconnect(),null));sessionItems.add(add(session,I18n.t("断开连接","Disconnect"),()->active().disconnect(),null));
         sessionItems.add(add(session,I18n.t("导出当前日志","Export current log"),()->active().exportLog(),null));session.addSeparator();
         sessionItems.add(add(session,I18n.t("关闭标签","Close tab"),()->closeSession(active()),KeyStroke.getKeyStroke(KeyEvent.VK_W,InputEvent.CTRL_DOWN_MASK)));

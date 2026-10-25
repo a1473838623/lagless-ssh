@@ -18,6 +18,9 @@ public final class SessionPane extends JPanel implements AutoCloseable {
     final DesktopApp app;
     final Profile profile;
     final String id = UUID.randomUUID().toString();
+    /** tmux session this tab is attached to, or null for an ordinary shell. */
+    final String background;
+    private volatile String backgroundPipe;
     final SwingTerminal view = new SwingTerminal();
     final JTextArea draft = DesktopApp.textArea(), mirror = DesktopApp.textArea(), assistant = DesktopApp.textArea();
     private JTextArea commandEditor=draft;
@@ -62,10 +65,15 @@ public final class SessionPane extends JPanel implements AutoCloseable {
         this(app,profile,null);
     }
     SessionPane(DesktopApp app, Profile profile, SshConnection.Prompter suppliedPrompter) throws Exception {
+        this(app,profile,suppliedPrompter,null);
+    }
+    SessionPane(DesktopApp app, Profile profile, SshConnection.Prompter suppliedPrompter, String background) throws Exception {
         super(new BorderLayout(0,8)); this.app=app;this.profile=profile;
+        if(background!=null&&!BackgroundSessions.NAME.matcher(background).matches())throw new IllegalArgumentException(I18n.t("后台会话名称无效","Invalid background session name"));
+        this.background=background;
         tools.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);tools.addChangeListener(e->Workspace.updateTabHeaders(tools));
         this.suppliedPrompter=suppliedPrompter;
-        journal=new SessionJournal(app.home,profile.name());view.setHistory(new TerminalHistory(app.home,id));draftFile=app.home.resolve("desktop/drafts/"+id+".txt");
+        journal=new SessionJournal(app.home,background==null?profile.name():profile.name()+"-"+background);view.setHistory(new TerminalHistory(app.home,id));draftFile=app.home.resolve("desktop/drafts/"+id+".txt");
         view.setInputAudit(this::auditTerminalInput);
         transcript=new SessionTranscript(journal,view::localEditing);
         setRecordFullscreen(Boolean.parseBoolean(app.preferences.get("record-fullscreen","true")));
@@ -73,7 +81,11 @@ public final class SessionPane extends JPanel implements AutoCloseable {
         view.setPageKeysForRemoteWheel(Boolean.parseBoolean(app.preferences.get("wheel-page-keys","false")));
         setBorder(new EmptyBorder(8,8,8,8));
         JPanel top=new JPanel(new BorderLayout());status.setForeground(DesktopApp.ACCENT);top.add(status,BorderLayout.WEST);
-        JLabel target=new JLabel(profile.user()+"@"+profile.host());target.setForeground(DesktopApp.MUTED);top.add(target,BorderLayout.EAST);add(top,BorderLayout.NORTH);
+        JLabel target=new JLabel(profile.user()+"@"+profile.host()+(background==null?"":I18n.t(" · 后台会话 "," · background session ")+background));target.setForeground(DesktopApp.MUTED);
+        JButton backgroundButton=new JButton(background==null?I18n.t("后台会话…","Background sessions…"):I18n.t("其他后台会话…","Other background sessions…"));backgroundButton.setName("background-sessions-button");backgroundButton.setFocusable(false);
+        backgroundButton.setToolTipText(I18n.t("在服务器上运行可在关闭 Lagless 后继续的 shell，并在重新打开后重新连接","Run a shell on the server that keeps going after Lagless closes, and reconnect to it later"));
+        backgroundButton.addActionListener(e->BackgroundSessions.show(this));
+        JPanel topRight=new JPanel(new FlowLayout(FlowLayout.RIGHT,10,0));topRight.setOpaque(false);topRight.add(target);topRight.add(backgroundButton);top.add(topRight,BorderLayout.EAST);add(top,BorderLayout.NORTH);
         JMenuBar editBar=new JMenuBar();JMenu editActions=new JMenu(I18n.t("本地编辑 · 操作","Local editor · Actions"));editBar.add(editActions);
         Workspace.add(editActions,I18n.t("独立窗口","Separate window"),()->detach(I18n.t("本地命令编辑","Local command editor"),draft,true),null);Workspace.add(editActions,I18n.t("保存草稿","Save draft"),this::saveDraftAs,null);Workspace.add(editActions,I18n.t("翻译命令","Translate command"),()->assist("translate-command"),null);Workspace.add(editActions,I18n.t("AI 补全","AI completion"),()->assist("complete"),null);
         editorWrap.setSelected(Boolean.parseBoolean(app.preferences.get("editor-wrap","false")));editorWrap.addActionListener(e->app.setEditorWrap(editorWrap.isSelected()));editActions.add(editorWrap);
@@ -114,7 +126,9 @@ public final class SessionPane extends JPanel implements AutoCloseable {
                         if(stopped)break;
                         terminal=view.attach();
                         Options options=profile.options();LaglessConfig.load(LaglessConfig.defaultPath()).applyTo(options,options.host);
-                        options.resumeId=profile.tmux()?"lagless_"+id.replace("-",""):null;
+                        options.resumeId=background!=null?background:profile.tmux()?"lagless_"+id.replace("-",""):null;
+                        if(background!=null)prepareBackground(connection);
+                        else{SshConnection current=connection;app.workers.submit(()->BackgroundSessions.remind(this,current));}
                         options.historySuffix=id;
                         TerminalSession session=new TerminalSession(terminal,connection,options);engine=session;session.setPassThrough(passThrough);
                         session.setInputAudit(message->app.events.operation(profile.name(),message));
@@ -196,10 +210,14 @@ public final class SessionPane extends JPanel implements AutoCloseable {
     }
     public boolean canSend(){TerminalSession session=engine;return !stopped && session!=null && session.mode()==TerminalSession.Mode.EDIT;}
     private boolean takeApproval(TerminalSession session,String command){for(Approval approval:approvals)if(approval.session()==session&&approval.command().equals(command)&&approvals.remove(approval))return true;return false;}
-    public boolean sendCommand(String command) {
+    public boolean sendCommand(String command) {return sendCommand(command,false);}
+    /** Sends a command the user already reviewed in Lagless's own dialog; only at a shell prompt. */
+    boolean sendApprovedCommand(String command){return sendCommand(command,true);}
+    private boolean sendCommand(String command,boolean approved) {
         TerminalSession source=engine;SshConnection target=connection;
         if(stopped||source==null||target==null||!target.isShellOpen()){lastNotice.set(I18n.t("当前连接未就绪；命令保留在本地。","This connection is not ready; the command stays local."));return false;}
         TerminalSession.Mode mode=source.mode();boolean interactive=mode!=TerminalSession.Mode.EDIT;
+        if(approved&&interactive){lastNotice.set(I18n.t("终端当前不在 shell 提示符；命令未发送。","The terminal is not at a shell prompt; the command was not sent."));return false;}
         if(interactive&&!interactiveSend.isSelected()){lastNotice.set(I18n.t("交互程序发送已关闭，请在「本地编辑 · 操作」中启用；内容保留在本地。","Sending to interactive programs is off; enable it in Local editor · Actions. The text stays local."));return false;}
         if(command.isBlank())return false;
         if(MultilineInput.unsupportedControls(MultilineInput.normalize(command))){lastNotice.set(I18n.t("内容包含不支持的控制字符，请检查后重试。","The text contains unsupported control characters; check it and try again."));return false;}
@@ -208,7 +226,8 @@ public final class SessionPane extends JPanel implements AutoCloseable {
         Approval approval=null;
         if(interactive){
             if(JOptionPane.showConfirmDialog(this,I18n.t("目标：","Target: ")+profile.name()+I18n.t("\n当前为透传 / tmux / 交互程序；输入可能交给密码框、编辑器或正在运行的程序。\n请先确认远程输入框为空。将发送：\n\n","\nPass-through / tmux / interactive program is active; input may go to a password prompt, an editor or a running program.\nMake sure the remote input is empty first. Will send:\n\n")+line,I18n.t("审阅向交互程序发送的内容","Review text sent to the interactive program"),JOptionPane.OK_CANCEL_OPTION,JOptionPane.WARNING_MESSAGE)!=JOptionPane.OK_OPTION)return false;
-        }else if(CommandSafety.needsReview(line)){
+        }else if(approved)approval=new Approval(source,line);
+        else if(CommandSafety.needsReview(line)){
             if(!review(line))return false;approval=new Approval(source,line);
         }
         if(engine!=source||connection!=target||stopped||!target.isShellOpen()||source.mode()!=mode){lastNotice.set(I18n.t("连接或输入模式已变化，内容保留在本地，请重试。","Connection or input mode changed; the text stays local. Try again."));return false;}
@@ -323,7 +342,22 @@ public final class SessionPane extends JPanel implements AutoCloseable {
     }
     String currentCommandText(){return currentCommand(commandEditor);}
     void sendAssistantCommand(String command){draft.setText(command);sendEditor(draft);}
-    void disconnect(){app.events.record(profile.name(),I18n.t("用户断开连接","Disconnected by user"));stopped=true;view.accepting(false);SshConnection c=connection;if(c!=null)app.workers.submit(c::close);updateStatus(I18n.t("正在断开…","Disconnecting…"));}
+    void disconnect(){app.events.record(profile.name(),I18n.t("用户断开连接","Disconnected by user"));stopped=true;view.accepting(false);SshConnection c=connection;String pipe=backgroundPipe;
+        if(c!=null)app.workers.submit(()->{
+            // A clean detach: the attached output is in the local log, so the server keeps only what comes next.
+            if(background!=null&&pipe!=null&&c.isConnected()){c.exec(BackgroundSessions.detachCommand(background,pipe),5_000);backgroundPipe=null;}
+            c.close();
+        });
+        updateStatus(background==null?I18n.t("正在断开…","Disconnecting…"):I18n.t("正在断开 · 后台会话继续在服务器上运行","Disconnecting · the background session keeps running on the server"));}
+    /** Creates or finds the tmux session, starts recording its output, and imports what was recorded before. */
+    private void prepareBackground(SshConnection connection){
+        String out=connection.exec(BackgroundSessions.prepareCommand(background),15_000);
+        if(out==null||out.contains("no-tmux")||out.contains("failed")){lastNotice.set(I18n.t("无法准备后台会话（服务器上可能没有 tmux）；将启动普通 shell。","Cannot prepare the background session (tmux may be missing on the server); an ordinary shell starts instead."));return;}
+        BackgroundSessions.Prepared prepared=BackgroundSessions.parsePrepared(out);backgroundPipe=prepared.pipe();
+        app.events.record(profile.name(),I18n.t("连接后台会话 ","Attach background session ")+background);
+        if(!prepared.recordings().isEmpty())app.workers.submit(()->BackgroundSessions.importRecordings(this,connection,background,prepared.recordings()));
+    }
+    void notice(String text){lastNotice.set(text);}
     void reconnect(){if(connecting){lastNotice.set(I18n.t("连接正在运行或重试中，请先关闭连接并等待结束。","The connection is running or retrying; close it and wait for it to end."));return;}stopped=false;logFailed=false;start();}
     @Override public void close(){
         if(disposed)return;disposed=true;
@@ -332,6 +366,6 @@ public final class SessionPane extends JPanel implements AutoCloseable {
         disconnect();uiTimer.stop();view.close();new ArrayList<>(detached).forEach(Window::dispose);detached.clear();app.sessions.remove(this);persistDraft(draft.getText());draftWriter.shutdown();
         connectionWorker.submit(() -> {try{try{transcript.close();}finally{journal.close();}}catch(Exception e){SwingUtilities.invokeLater(() -> DesktopApp.error(app.windows.isEmpty()?null:app.windows.get(0),e));}});connectionWorker.shutdown();
     }
-    @Override public String toString(){return profile.name()+" · "+profile.host()+" · "+id.substring(0,6);}
+    @Override public String toString(){return profile.name()+(background==null?"":" · "+background)+" · "+profile.host()+" · "+id.substring(0,6);}
     void awaitClosed(long deadline)throws InterruptedException{connectionWorker.awaitTermination(Math.max(0,deadline-System.nanoTime()),TimeUnit.NANOSECONDS);draftWriter.awaitTermination(Math.max(0,deadline-System.nanoTime()),TimeUnit.NANOSECONDS);}
 }

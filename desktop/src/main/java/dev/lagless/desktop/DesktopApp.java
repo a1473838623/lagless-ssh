@@ -174,11 +174,13 @@ public final class DesktopApp implements AutoCloseable {
     }
     void setEditorWrap(boolean wrap){preferences.set("editor-wrap",Boolean.toString(wrap));sessions.forEach(s->s.setEditorWrap(wrap));workspaces.values().forEach(w->w.editorWrap.setSelected(wrap));}
 
-    void open(JTabbedPane tabs, Profile profile) {
+    void open(JTabbedPane tabs, Profile profile) {open(tabs,profile,null);}
+    void open(JTabbedPane tabs, Profile profile, String background) {
         try {
-            SessionPane pane = new SessionPane(this,profile); sessions.add(pane); tabs.addTab(profile.name(),pane); tabs.setSelectedComponent(pane);
+            String title=background==null?profile.name():profile.name()+" · "+background;
+            SessionPane pane = new SessionPane(this,profile,null,background); sessions.add(pane); tabs.addTab(title,pane); tabs.setSelectedComponent(pane);
             tabs.setToolTipTextAt(tabs.indexOfComponent(pane),profile.user()+"@"+profile.host()+":"+profile.port());
-            tabs.setTabComponentAt(tabs.indexOfComponent(pane),new SessionTabHeader(tabs,profile.name(),()->{if(JOptionPane.showConfirmDialog(pane,I18n.t("断开此连接？草稿与日志将保留。","Disconnect this connection? Drafts and logs are kept."),I18n.t("关闭连接","Close connection"),JOptionPane.OK_CANCEL_OPTION)==JOptionPane.OK_OPTION){pane.close();tabs.remove(pane);}}));Workspace.updateTabHeaders(tabs);pane.start();
+            tabs.setTabComponentAt(tabs.indexOfComponent(pane),new SessionTabHeader(tabs,title,()->{if(JOptionPane.showConfirmDialog(pane,background==null?I18n.t("断开此连接？草稿与日志将保留。","Disconnect this connection? Drafts and logs are kept."):I18n.t("断开此连接？后台会话会继续在服务器上运行，之后可重新连接。","Disconnect? The background session keeps running on the server and you can reconnect later."),I18n.t("关闭连接","Close connection"),JOptionPane.OK_CANCEL_OPTION)==JOptionPane.OK_OPTION){pane.close();tabs.remove(pane);}}));Workspace.updateTabHeaders(tabs);pane.start();
         } catch (Exception e) { error(tabs,e); }
     }
     void edit(Component parent, Profile previous) {
