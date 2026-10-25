@@ -69,6 +69,12 @@ public final class LocalEcho {
     static final long HOLD_NANOS = 50_000_000L;
     private static final int HOLD_LIMIT = 64 * 1024;
     private static final int MAX_TYPED_CELLS = 4096;
+    /**
+     * Columns from the right edge where a program may wrap its input onto the
+     * next row (Claude Code wraps before the last column). Text is not pushed
+     * or pulled there by prediction when the row below holds text.
+     */
+    private static final int WRAP_MARGIN = 12;
     /** DEC synchronized output: the terminal shows the update only once it is complete. */
     private static final String SYNC_ON = "\u001b[?2026h";
     private static final String SYNC_OFF = "\u001b[?2026l";
@@ -82,12 +88,14 @@ public final class LocalEcho {
     private static final class Edit {
         final boolean erase;
         final int col;
-        /** Code point inserted; unused for a backspace. */
+        /** Code point inserted; unused for a backspace; {@link #MOVE} for a cursor move to {@code col}. */
         final int cp;
         final int width;
         final long sentNanos;
         /** Typed before a key that ended the epoch. */
         boolean sealed;
+
+        static final int MOVE = -1;
 
         Edit(boolean erase, int col, int cp, int width, long sentNanos) {
             this.erase = erase;
@@ -118,6 +126,10 @@ public final class LocalEcho {
 
         void apply(Edit e) {
             int n = cells.length;
+            if (e.cp == Edit.MOVE) {
+                cursor = e.col;
+                return;
+            }
             if (e.erase) {
                 int w = Math.min(e.width, n - e.col);
                 System.arraycopy(cells, e.col + w, cells, e.col, n - e.col - w);
@@ -374,6 +386,11 @@ public final class LocalEcho {
         if (c + w >= cols || lastUsed(line.cells) + w >= cols - 1) {
             return false;
         }
+        // The row may be the first of a wrapped input: what crosses its wrap
+        // point continues on the next row, which no row edit can show.
+        if (lastUsed(line.cells) + w >= cols - WRAP_MARGIN && rowBelowHasText(baseRow)) {
+            return false;
+        }
         pending.add(new Edit(false, c, cp, w, now));
         dirtyRows.add(baseRow);
         return true;
@@ -399,6 +416,13 @@ public final class LocalEcho {
         int col = c - w;
         // Only what the user typed may be rubbed out, never the program's prompt.
         if (col < 0 || !line.typed[col]) {
+            if (pending.isEmpty()) {
+                baseRow = -1;
+            }
+            return false;
+        }
+        // Erasing inside a full row of a wrapped input pulls text up from the next row.
+        if (c <= lastUsed(line.cells) && lastUsed(line.cells) >= line.cells.length - WRAP_MARGIN && rowBelowHasText(baseRow)) {
             if (pending.isEmpty()) {
                 baseRow = -1;
             }
@@ -517,8 +541,6 @@ public final class LocalEcho {
         if (linePos < lineText.size()) {
             // The cursor was inside the text: move the remote's there too.
             outgoing.append("\u001b[D".repeat(lineText.size() - linePos));
-            endEpoch();
-            return;
         }
         dropPending();
         baseRow = lineRow;
@@ -534,6 +556,11 @@ public final class LocalEcho {
             int w = Math.max(1, CharWidth.of(cp));
             pending.add(new Edit(false, c, cp, w, now));
             c += w;
+        }
+        if (linePos < lineText.size()) {
+            // The text stays on screen, with the cursor where it was, until
+            // the remote has drawn the text and moved its cursor back too.
+            pending.add(new Edit(false, lineCol + lineWidth(linePos), Edit.MOVE, 0, now));
         }
     }
 
@@ -1003,6 +1030,15 @@ public final class LocalEcho {
             line.apply(e);
             states.add(line.copy());
         }
+        if (remoteUpdate && moved(now)) {
+            // The input is no longer on the row the keys were drawn on (the
+            // program's input box grew as the text wrapped): the remote's
+            // drawing is the truth from here.
+            Log.d("local echo: input moved to another row, backing off");
+            dropPending();
+            endEpoch();
+            return;
+        }
         int handled = handledCount(states, now);
         if (handled >= 0) {
             if (handled > 0) {
@@ -1034,7 +1070,8 @@ public final class LocalEcho {
         for (Edit e : pending) {
             sealed |= e.sealed;
         }
-        if (remoteUpdate && sealed || overdue(pending.get(0).sentNanos, now, timeout)) {
+        if (remoteUpdate && sealed || rewrapped(states.get(states.size() - 1), now)
+                || overdue(pending.get(0).sentNanos, now, timeout)) {
             if (!sealed) {
                 Log.d("local echo: remote line differs from what was typed, backing off");
             }
@@ -1078,6 +1115,62 @@ public final class LocalEcho {
         return -1;
     }
 
+    /**
+     * The remote handled every key and wrapped the text where the typed line
+     * did not: a finished frame with the cursor where the last key leaves it,
+     * and the row equal to the typed line except that one of them ends
+     * earlier, the rest having moved to or come from the next row.
+     */
+    private boolean rewrapped(Line last, long now) {
+        // With no round trip measured yet (a line handed over from the local
+        // line), any finished frame counts.
+        long tooRecent = minRttNanos < 0 ? now : now - minRttNanos * 3 / 4;
+        if (!screen.cursorVisible() || screen.row() != baseRow || screen.col() != last.cursor
+                || pending.get(pending.size() - 1).sentNanos > tooRecent) {
+            return false;
+        }
+        int[] remote = rowCells(screen, baseRow);
+        int remoteEnd = lastUsed(remote);
+        int typedEnd = lastUsed(last.cells);
+        if (remoteEnd == typedEnd) {
+            return false;
+        }
+        for (int c = 0; c <= Math.min(remoteEnd, typedEnd); c++) {
+            if (remote[c] != last.cells[c]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * A finished frame, long enough after the oldest pending key for the
+     * remote to have handled it, leaves the cursor on another row than the one
+     * being edited, or changes that row left of every edit (where the prompt
+     * stood): the keys did not land on the row they were drawn on.
+     */
+    private boolean moved(long now) {
+        // With no round trip measured yet (a line handed over from the local
+        // line), any finished frame counts.
+        long tooRecent = minRttNanos < 0 ? now : now - minRttNanos * 3 / 4;
+        if (!screen.cursorVisible() || pending.get(0).sentNanos > tooRecent) {
+            return false;
+        }
+        if (screen.row() != baseRow) {
+            return true;
+        }
+        int from = base.cursor;
+        for (Edit e : pending) {
+            from = Math.min(from, e.col);
+        }
+        for (int c = 0; c < from; c++) {
+            if (screen.charAt(baseRow, c) != base.cells[c]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** The remote's line from column {@code from} on, and its cursor, are exactly this state. */
     private boolean drawn(Line s, int from) {
         if (s.cursor != screen.col()) {
@@ -1115,9 +1208,13 @@ public final class LocalEcho {
         int c = screen.col();
         long tooRecent = minRttNanos < 0 ? Long.MAX_VALUE : now - minRttNanos * 3 / 4;
         // Keys before the run may have been swallowed (vim's "i"). The longest
-        // run wins; between equally long ones, the earlier end is the safer bet.
+        // run wins. Equally long runs ending at different keys (the same key
+        // typed twice where the run meets the row start) leave open how many
+        // keys the remote handled: drawing the rest could show a key twice,
+        // so the probe waits for an echo that tells them apart.
         int handled = 0;
         int bestRun = 0;
+        boolean ambiguous = false;
         for (int j = 1; j <= probe.size(); j++) {
             if (probeSent.get(j - 1) > tooRecent) {
                 continue;
@@ -1134,9 +1231,12 @@ public final class LocalEcho {
             if (run > bestRun) {
                 bestRun = run;
                 handled = j;
+                ambiguous = false;
+            } else if (run == bestRun && run > 0) {
+                ambiguous = true;
             }
         }
-        if (handled == 0) {
+        if (handled == 0 || ambiguous) {
             return;
         }
         int x = c;
@@ -1292,6 +1392,21 @@ public final class LocalEcho {
     }
 
     /** Index of the last non-blank cell, -1 for a blank row. */
+    /** The row under {@code r} shows text, not just blanks or a box border. */
+    private boolean rowBelowHasText(int r) {
+        ScreenModel m = current();
+        if (r + 1 >= m.rows()) {
+            return false;
+        }
+        for (int c = 0; c < m.cols(); c++) {
+            int cp = m.charAt(r + 1, c);
+            if (cp != ' ' && cp != ScreenModel.WIDE_TAIL && cp != 0xA0 && !(cp >= 0x2500 && cp <= 0x257F)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static int lastUsed(int[] line) {
         for (int c = line.length - 1; c >= 0; c--) {
             if (line[c] != ' ') {

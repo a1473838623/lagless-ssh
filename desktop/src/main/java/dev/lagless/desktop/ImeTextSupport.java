@@ -3,7 +3,11 @@ package dev.lagless.desktop;
 import javax.swing.*;
 import javax.swing.text.JTextComponent;
 import java.awt.*;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import java.awt.event.InputMethodEvent;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.geom.Rectangle2D;
 import java.text.AttributedCharacterIterator;
 
@@ -11,10 +15,35 @@ import java.text.AttributedCharacterIterator;
 final class ImeTextSupport {
     private String preedit="";
     private int anchor;
+    private boolean composing;
+
+    /** Drops the overlay whenever the composition can no longer be live. */
+    void install(JTextComponent component){
+        component.addFocusListener(new FocusAdapter(){@Override public void focusLost(FocusEvent e){clear(component);}});
+        component.addPropertyChangeListener("document",e->{clear(component);listen(component);});
+        listen(component);
+    }
+    private void listen(JTextComponent component){
+        component.getDocument().addDocumentListener(new DocumentListener(){
+            public void insertUpdate(DocumentEvent e){edited(component,e);}
+            public void removeUpdate(DocumentEvent e){edited(component,e);}
+            public void changedUpdate(DocumentEvent e){}
+        });
+    }
+    // setText, paste or a send that empties the field leaves no composition behind.
+    private void edited(JTextComponent component,DocumentEvent e){if(!composing&&e.getDocument()==component.getDocument())clear(component);}
+    void clear(JTextComponent component){if(preedit.isEmpty())return;preedit="";component.repaint();}
+
+    void process(JTextComponent component,InputMethodEvent event,java.util.function.Consumer<InputMethodEvent> next){
+        composing=true;
+        try{capture(component,event);next.accept(event);}finally{composing=false;}
+    }
 
     void capture(JTextComponent component,InputMethodEvent event){
+        if(event.getID()!=InputMethodEvent.INPUT_METHOD_TEXT_CHANGED)return;
         AttributedCharacterIterator iterator=event.getText();
-        if(iterator==null)return;
+        // The input method ends or cancels a composition with an event that carries no text.
+        if(iterator==null){clear(component);return;}
         StringBuilder incoming=new StringBuilder();
         int committed=event.getCommittedCharacterCount(),at=0;
         for(char value=iterator.first();value!=AttributedCharacterIterator.DONE;value=iterator.next(),at++)if(at>=committed)incoming.append(value);
@@ -43,16 +72,16 @@ final class ImeTextSupport {
 
 final class ImeTextField extends JTextField {
     private final ImeTextSupport ime=new ImeTextSupport();
-    ImeTextField(){super();enableInputMethods(true);}
-    ImeTextField(String text,int columns){super(text,columns);enableInputMethods(true);}
-    ImeTextField(int columns){super(columns);enableInputMethods(true);}
-    @Override protected void processInputMethodEvent(InputMethodEvent event){ime.capture(this,event);super.processInputMethodEvent(event);}
+    ImeTextField(){super();enableInputMethods(true);ime.install(this);}
+    ImeTextField(String text,int columns){super(text,columns);enableInputMethods(true);ime.install(this);}
+    ImeTextField(int columns){super(columns);enableInputMethods(true);ime.install(this);}
+    @Override protected void processInputMethodEvent(InputMethodEvent event){ime.process(this,event,super::processInputMethodEvent);}
     @Override protected void paintComponent(Graphics graphics){super.paintComponent(graphics);ime.paint(this,graphics);}
 }
 
 final class ImeTextArea extends JTextArea {
     private final ImeTextSupport ime=new ImeTextSupport();
-    ImeTextArea(){super();enableInputMethods(true);}
-    @Override protected void processInputMethodEvent(InputMethodEvent event){ime.capture(this,event);super.processInputMethodEvent(event);}
+    ImeTextArea(){super();enableInputMethods(true);ime.install(this);}
+    @Override protected void processInputMethodEvent(InputMethodEvent event){ime.process(this,event,super::processInputMethodEvent);}
     @Override protected void paintComponent(Graphics graphics){super.paintComponent(graphics);ime.paint(this,graphics);}
 }

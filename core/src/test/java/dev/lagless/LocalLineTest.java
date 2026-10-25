@@ -292,6 +292,29 @@ class LocalLineTest {
     }
 
     @Test
+    void aLongLineHandedOverWithTheCursorInsideStaysOnScreenUntilTheRemoteShowsIt() {
+        startClaude();
+        String text = "a".repeat(40) + "b".repeat(36);
+        for (String k : text.split("")) {
+            key(k);
+        }
+        for (int i = 0; i < 36; i++) {
+            key("\u001b[D");
+        }
+        // Too long for the row: the line goes to the remote, cursor and all.
+        key("c");
+        assertFalse(echo.isEditingLine());
+        assertEquals(text + "\u001b[D".repeat(36) + "c", sent.toString());
+        // Before the echo the typed text stays, never the remote's empty prompt.
+        String shown = "❯ " + "a".repeat(40) + "c" + "b".repeat(36);
+        assertEquals(shown, input());
+        assertEquals(43, terminal.col());
+        now += 100 * MS;
+        remote(claudeLine(""));
+        assertEquals(shown, input());
+    }
+
+    @Test
     void chineseTextFromAnImeIsEditedLocally() {
         startClaude();
         key("你好");

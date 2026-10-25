@@ -20,6 +20,8 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 /** Responsive assistant with persistent conversations and a local composer. */
 final class AssistantChatPanel extends JPanel {
     private static final String[] ACTIONS={I18n.t("分析 / 问答","Analyze / Q&A"),I18n.t("自然语言转命令","Natural language to command"),I18n.t("补全命令","Complete command"),I18n.t("翻译","Translate"),I18n.t("翻译命令","Translate command")};
+    /** Sent when context is selected but the composer is empty; shown in the composer so it can be edited. */
+    private static final String[] DEFAULT_REQUESTS={I18n.t("请分析所选上下文，说明其中的关键信息和问题。","Analyze the selected context and explain the key points and any problems."),I18n.t("根据所选上下文，给出下一步要执行的命令。","Based on the selected context, suggest the command to run next."),I18n.t("补全所选上下文中的命令。","Complete the command in the selected context."),I18n.t("翻译所选上下文。","Translate the selected context."),I18n.t("翻译所选上下文中的命令，并说明其作用。","Translate the commands in the selected context and explain what they do.")};
     private static final String[] CONTEXTS={I18n.t("不附加终端输出","No terminal output"),I18n.t("最近 20 行","Last 20 lines"),I18n.t("最近 100 行","Last 100 lines"),I18n.t("最近 500 行","Last 500 lines"),I18n.t("全部终端历史","All terminal history")};
     private final SessionPane session;
     private final JComboBox<Conversation> conversations=new JComboBox<>();
@@ -40,10 +42,14 @@ final class AssistantChatPanel extends JPanel {
     private final javax.swing.Timer streamRefresh;
     private int nextConversation=1;
     private boolean changingSelection;
+    private String autoPrompt="";
+    private int logRows=200;
 
     private record Message(String role,String text){}
-    private record ReferenceItem(Path path,String kind,boolean temporary){
-        @Override public String toString(){return kind+" · "+path.getFileName();}
+    /** {@code lines} is how many of a log's latest lines to send; 0 sends its latest page. */
+    private record ReferenceItem(Path path,String kind,boolean temporary,int lines){
+        ReferenceItem(Path path,String kind,boolean temporary){this(path,kind,temporary,0);}
+        @Override public String toString(){return kind+" · "+path.getFileName()+(lines>0?I18n.t(" · 最新 "," · latest ")+lines+I18n.t(" 行"," lines"):"");}
         boolean log(){return kind.endsWith(I18n.t("日志","log"))||kind.equals(I18n.t("终端历史","Terminal history"))||kind.equals(I18n.t("全量输入输出历史","Full input/output history"));}
     }
     private static final class Conversation {
@@ -81,7 +87,8 @@ final class AssistantChatPanel extends JPanel {
         JPanel sendRow=new JPanel(new BorderLayout(8,0));sendRow.setAlignmentX(Component.LEFT_ALIGNMENT);sendRow.setMaximumSize(new Dimension(Integer.MAX_VALUE,42));status.setForeground(DesktopApp.MUTED);sendRow.add(status,BorderLayout.CENTER);JPanel actions=new JPanel(new FlowLayout(FlowLayout.RIGHT,5,0));JButton cancel=button(I18n.t("停止","Stop"),this::cancelRequest);actions.add(cancel);actions.add(button(I18n.t("插入回复到本地草稿","Insert reply into local draft"),this::insertReply));actions.add(send);sendRow.add(actions,BorderLayout.EAST);composerArea.add(sendRow);add(composerArea,BorderLayout.SOUTH);
 
         send.addActionListener(e->sendMessage());composer.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER,0),"send-assistant");composer.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER,InputEvent.SHIFT_DOWN_MASK),"insert-break");composer.getActionMap().put("send-assistant",new AbstractAction(){public void actionPerformed(ActionEvent e){sendMessage();}});composer.getActionMap().put("insert-break",new AbstractAction(){public void actionPerformed(ActionEvent e){composer.replaceSelection("\n");}});
-        action.addActionListener(e->{translations.setVisible(action.getSelectedIndex()>=3);composerArea.revalidate();});translations.setVisible(false);
+        action.addActionListener(e->{translations.setVisible(action.getSelectedIndex()>=3);composerArea.revalidate();refreshDefaultPrompt();});translations.setVisible(false);
+        context.addActionListener(e->refreshDefaultPrompt());includeOtherSessions.addActionListener(e->refreshDefaultPrompt());
         JButton settings=button(I18n.t("AI 配置","AI settings"),()->{session.app.assistantSettings(session);reloadServices();});
         options.add(settings);
         service.addActionListener(e->reloadModels());reloadServices();streamRefresh=new javax.swing.Timer(60,e->flushStreams());streamRefresh.start();
@@ -101,9 +108,19 @@ final class AssistantChatPanel extends JPanel {
     private void persist(){try{List<Object> values=new ArrayList<>();for(int i=0;i<conversations.getItemCount();i++){Conversation c=conversations.getItemAt(i);List<Object> messages=c.messages.stream().map(m->(Object)Map.of("role",m.role,"text",m.text)).toList();values.add(Map.of("title",c.title,"messages",messages));}Files.createDirectories(store.getParent());ProfileStore.atomicWrite(store,Json.stringify(Map.of("version",1,"conversations",values)));}catch(Exception e){session.app.events.operation(session.profile.name(),I18n.t("AI助手历史保存失败：","Failed to save AI assistant history: ")+e.getMessage());}}
     private void reloadServices(){try{AssistantSettings settings=AssistantSettings.load(session.app.home);Object previous=service.getSelectedItem();service.removeAllItems();settings.services.forEach(service::addItem);if(previous!=null)service.setSelectedItem(previous);if(service.getSelectedItem()==null&&settings.current()!=null)service.setSelectedItem(settings.current());reloadModels();}catch(Exception error){status.setText(I18n.t("AI 配置读取失败：","Failed to read AI configuration: ")+error.getMessage());}}
     private void reloadModels(){model.removeAllItems();AssistantSettings.Service selected=(AssistantSettings.Service)service.getSelectedItem();if(selected!=null)selected.models().forEach(model::addItem);}
-    private void updateReferences(){((CardLayout)referenceContent.getLayout()).show(referenceContent,attachmentModel.isEmpty()?"empty":"list");referenceContent.revalidate();referenceContent.repaint();}
+    private void updateReferences(){((CardLayout)referenceContent.getLayout()).show(referenceContent,attachmentModel.isEmpty()?"empty":"list");referenceContent.revalidate();referenceContent.repaint();refreshDefaultPrompt();}
+    private boolean hasContext(){return context.getSelectedIndex()>0||includeOtherSessions.isSelected()||!attachmentModel.isEmpty();}
+    /** Shows the feature's default request while context is selected and the user has not written their own. */
+    private void refreshDefaultPrompt(){
+        String text=composer.getText();
+        if(!text.isEmpty()&&!text.equals(autoPrompt))return;
+        String next=hasContext()?DEFAULT_REQUESTS[Math.max(0,action.getSelectedIndex())]:"";
+        if(!next.equals(text))composer.setText(next);
+        autoPrompt=next;
+    }
     private void addReference(ReferenceItem item){
-        for(int i=0;i<attachmentModel.size();i++)if(attachmentModel.get(i).path().equals(item.path()))return;
+        // Choosing a log again only updates how many of its lines are sent.
+        for(int i=0;i<attachmentModel.size();i++)if(attachmentModel.get(i).path().equals(item.path())){if(attachmentModel.get(i).lines()!=item.lines()){attachmentModel.set(i,item);status.setText(I18n.t("已更新：","Updated: ")+item);}return;}
         if(attachmentModel.size()>=12){status.setText(I18n.t("每次最多附加 12 项参考资料。","At most 12 references per message."));return;}
         attachmentModel.addElement(item);status.setText(I18n.t("已添加：","Added: ")+item);
         session.app.events.operation(session.profile.name(),I18n.t("AI助手参考资料添加；类型=","AI assistant reference added; type=")+item.kind()+I18n.t("；文件=","; file=")+item.path().getFileName());
@@ -125,12 +142,51 @@ final class AssistantChatPanel extends JPanel {
         }
         available.sort(Comparator.comparing((ReferenceItem r)->r.path().getFileName().toString()).reversed());
         if(available.isEmpty()){status.setText(I18n.t("尚无可选择的日志。","No logs to choose yet."));return;}
-        JList<ReferenceItem> picker=new JList<>(available.toArray(ReferenceItem[]::new));picker.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        JList<ReferenceItem> picker=new JList<>(available.toArray(ReferenceItem[]::new));picker.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);picker.setName("assistant-log-picker");
         picker.setCellRenderer((list,value,index,selected,focus)->{JLabel label=new JLabel(value.toString());label.setToolTipText(value.path().toString());label.setBorder(new EmptyBorder(5,8,5,8));label.setOpaque(true);label.setBackground(selected?new Color(0xdcefe9):list.getBackground());label.setForeground(list.getForeground());return label;});
-        JScrollPane scroll=new JScrollPane(picker);scroll.setPreferredSize(new Dimension(570,310));
-        if(JOptionPane.showConfirmDialog(this,new Object[]{I18n.t("可多选具体日志；每份读取最新 256 KiB，内容仅随本次请求发送。","Choose one or more logs; the latest 256 KiB of each is read and sent with this request only."),scroll},I18n.t("选择 AI 参考日志","Choose logs for AI"),JOptionPane.OK_CANCEL_OPTION,JOptionPane.PLAIN_MESSAGE)==JOptionPane.OK_OPTION)
-            for(ReferenceItem item:picker.getSelectedValuesList())addReference(item);
+        JScrollPane scroll=new JScrollPane(picker);scroll.setPreferredSize(new Dimension(300,360));
+        JSpinner rows=new JSpinner(new SpinnerNumberModel(logRows,1,100_000,50));rows.setName("assistant-log-rows");
+        JTextArea preview=DesktopApp.textArea();preview.setName("assistant-log-preview");preview.setEditable(false);preview.setFont(DesktopFonts.monospace(12));preview.setMargin(new Insets(6,8,6,8));
+        JLabel previewStatus=new JLabel(I18n.t("选择左侧日志查看内容。","Select a log on the left to see its content."));previewStatus.setForeground(DesktopApp.MUTED);
+        JScrollPane previewScroll=new JScrollPane(preview);previewScroll.setPreferredSize(new Dimension(520,360));
+        long[] previewGeneration={0};
+        Runnable showPreview=()->{
+            ReferenceItem item=picker.getSelectedValue();int count=(Integer)rows.getValue();long generation=++previewGeneration[0];
+            if(item==null){preview.setText("");previewStatus.setText(I18n.t("选择左侧日志查看内容。","Select a log on the left to see its content."));return;}
+            previewStatus.setText(I18n.t("正在读取 ","Reading ")+item.path().getFileName()+"…");
+            session.app.workers.submit(()->{
+                String text,note;
+                try{text=tailLines(item.path(),count);long shown=text.isEmpty()?0:text.chars().filter(c->c=='\n').count()+1;note=item.path().getFileName()+I18n.t(" · 显示最新 "," · showing the latest ")+shown+I18n.t(" 行（将发送的内容）"," lines (what will be sent)");}
+                catch(Exception error){text="";note=I18n.t("读取失败：","Read failed: ")+error.getMessage();}
+                String loaded=text,message=note;
+                SwingUtilities.invokeLater(()->{if(generation!=previewGeneration[0])return;preview.setText(loaded);preview.setCaretPosition(loaded.length());previewStatus.setText(message);});
+            });
+        };
+        picker.addListSelectionListener(e->{if(!e.getValueIsAdjusting())showPreview.run();});rows.addChangeListener(e->showPreview.run());
+        picker.setSelectedIndex(0);
+        JPanel previewPanel=new JPanel(new BorderLayout(0,4));previewPanel.add(previewStatus,BorderLayout.NORTH);previewPanel.add(previewScroll,BorderLayout.CENTER);
+        JSplitPane split=new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,scroll,previewPanel);split.setResizeWeight(0.35);split.setBorder(null);
+        JPanel rowsPanel=new JPanel(new FlowLayout(FlowLayout.LEFT,6,0));rowsPanel.add(new JLabel(I18n.t("发送每份日志最新","Send the latest")));rowsPanel.add(rows);rowsPanel.add(new JLabel(I18n.t("行","lines of each log")));
+        JPanel panel=new JPanel(new BorderLayout(0,8));panel.add(new JLabel(I18n.t("可多选具体日志，右侧显示选中日志将发送的内容；内容仅随本次请求发送。","Choose one or more logs. The right side shows what will be sent from the highlighted log, with this request only.")),BorderLayout.NORTH);panel.add(split,BorderLayout.CENTER);panel.add(rowsPanel,BorderLayout.SOUTH);
+        if(JOptionPane.showConfirmDialog(this,panel,I18n.t("选择 AI 参考日志","Choose logs for AI"),JOptionPane.OK_CANCEL_OPTION,JOptionPane.PLAIN_MESSAGE)==JOptionPane.OK_OPTION){
+            logRows=(Integer)rows.getValue();
+            for(ReferenceItem item:picker.getSelectedValuesList())addReference(new ReferenceItem(item.path(),item.kind(),false,logRows));
+        }
+        previewGeneration[0]++;
     }
+    /** The last {@code lines} lines of a log, reading back page by page and stopping near the request size limit. */
+    static String tailLines(Path file,int lines)throws IOException{
+        LogViewer.Page page=LogViewer.readPage(file,-1);StringBuilder text=new StringBuilder(page.text());long start=page.start();
+        while(start>0&&newlines(text)<=lines&&text.length()<700_000){
+            LogViewer.Page earlier=LogViewer.readRange(file,Math.max(0,start-LogViewer.PAGE_BYTES),start,true,false);
+            if(earlier.start()>=start||earlier.text().isEmpty())break;
+            text.insert(0,earlier.text());start=earlier.start();
+        }
+        int end=text.length();while(end>0&&(text.charAt(end-1)=='\n'||text.charAt(end-1)=='\r'))end--;
+        int from=end;for(int seen=0;from>0;from--)if(text.charAt(from-1)=='\n'&&++seen==lines)break;
+        return text.substring(from,end);
+    }
+    private static int newlines(CharSequence text){int n=0;for(int i=0;i<text.length();i++)if(text.charAt(i)=='\n')n++;return n;}
     private void pasteImage(Image image){
         if(image==null){status.setText(I18n.t("剪贴板图片不可读取。","Cannot read the clipboard image."));return;}
         if(attachmentModel.size()>=12){status.setText(I18n.t("每次最多附加 12 项参考资料。","At most 12 references per message."));return;}
@@ -149,9 +205,11 @@ final class AssistantChatPanel extends JPanel {
     private String selectedLogs(List<ReferenceItem> references,int existingContextLength){
         StringBuilder context=new StringBuilder();int remaining=Math.min(700_000,Math.max(0,950_000-existingContextLength));
         for(ReferenceItem reference:references)if(reference.log()&&remaining>0){
-            try{LogViewer.Page page=LogViewer.readPage(reference.path(),-1);String prefix="\n\nSelected "+reference.kind()+" ("+reference.path().getFileName()+", bytes "+page.start()+"-"+page.end()+" / "+page.length()+"):\n";
+            try{String prefix,body;
+                if(reference.lines()>0){body=tailLines(reference.path(),reference.lines());prefix="\n\nSelected "+reference.kind()+" ("+reference.path().getFileName()+", latest "+reference.lines()+" lines):\n";}
+                else{LogViewer.Page page=LogViewer.readPage(reference.path(),-1);body=page.text();prefix="\n\nSelected "+reference.kind()+" ("+reference.path().getFileName()+", bytes "+page.start()+"-"+page.end()+" / "+page.length()+"):\n";}
                 if(prefix.length()>=remaining)break;
-                context.append(prefix);remaining-=prefix.length();String text=page.text();if(text.length()>remaining){String omitted=I18n.t("[较早或超出上下文限制的内容已省略]\n","[earlier content beyond the context limit omitted]\n");if(omitted.length()<remaining){context.append(omitted);remaining-=omitted.length();}text=text.substring(Math.max(0,text.length()-remaining));}
+                context.append(prefix);remaining-=prefix.length();String text=body;if(text.length()>remaining){String omitted=I18n.t("[较早或超出上下文限制的内容已省略]\n","[earlier content beyond the context limit omitted]\n");if(omitted.length()<remaining){context.append(omitted);remaining-=omitted.length();}text=text.substring(Math.max(0,text.length()-remaining));}
                 context.append(text);remaining-=text.length();
             }catch(Exception error){context.append(I18n.t("\n[日志读取失败：","\n[log read failed: ")).append(reference.path().getFileName()).append(I18n.t("；","; ")).append(error.getMessage()).append("]");session.app.events.operation(session.profile.name(),I18n.t("AI助手参考日志读取失败；文件=","AI assistant reference log read failed; file=")+reference.path().getFileName()+I18n.t("；原因=","; reason=")+error.getMessage());}
         }
@@ -164,13 +222,13 @@ final class AssistantChatPanel extends JPanel {
     void prepare(String actionName,String text){if(actionName.equals("translate"))action.setSelectedItem(I18n.t("翻译","Translate"));else if(actionName.equals("translate-command"))action.setSelectedItem(I18n.t("翻译命令","Translate command"));else if(actionName.equals("command"))action.setSelectedItem(I18n.t("自然语言转命令","Natural language to command"));else if(actionName.equals("complete"))action.setSelectedItem(I18n.t("补全命令","Complete command"));else action.setSelectedItem(I18n.t("分析 / 问答","Analyze / Q&A"));if(text!=null&&!text.isBlank())composer.setText(text);composer.requestFocusInWindow();}
 
     private void sendMessage(){
-        Conversation c=current();if(c==null||c.busy)return;String question=composer.getText();if(question.isBlank()&&attachmentModel.isEmpty()){status.setText(I18n.t("请先输入问题或添加附件。","Type a question or add an attachment first."));return;}
+        Conversation c=current();if(c==null||c.busy)return;String question=composer.getText();if(question.isBlank()&&!hasContext()){status.setText(I18n.t("请先输入问题，或选择上下文、日志或附件。","Type a question, or select context, logs or attachments first."));return;}
         AssistantSettings.Service chosen=(AssistantSettings.Service)service.getSelectedItem();String chosenModel=(String)model.getSelectedItem();if(chosen==null||chosenModel==null){status.setText(I18n.t("请先添加 AI 服务和模型配置。","Add an AI service and model first."));return;}
         String task=switch(action.getSelectedIndex()){case 1->"command";case 2->"complete";case 3,4->"translate";default->"ask";};String from=sourceLanguage.getText().trim(),to=targetLanguage.getText().trim();if(task.equals("translate")&&(from.isBlank()||to.isBlank())){status.setText(I18n.t("请填写源语言和目标语言。","Fill in the source and target languages."));return;}
         List<ReferenceItem> references=new ArrayList<>();for(int i=0;i<attachmentModel.size();i++)references.add(attachmentModel.get(i));int contextIndex=context.getSelectedIndex();int rows=switch(contextIndex){case 1->20;case 2->100;case 3->500;case 4->-1;default->0;};String contextText=rows==0&&!includeOtherSessions.isSelected()?"":session.assistantContext(rows,includeOtherSessions.isSelected());
         if(!c.messages.isEmpty())contextText="Previous messages in this conversation:\n"+c.messages.stream().map(m->(m.role.equals("user")?"User: ":"Assistant: ")+m.text).reduce((a,b)->a+"\n"+b).orElse("")+"\n\n"+contextText;if(task.equals("translate"))contextText="Translation direction: "+from+" → "+to+"\n"+contextText;
-        String sentContext=contextText;String requestText=question.isBlank()?"Please analyze the attached reference material.":question;long logCount=references.stream().filter(ReferenceItem::log).count();session.app.events.operation(session.profile.name(),I18n.t("AI助手请求开始；功能=","AI assistant request started; feature=")+ACTIONS[action.getSelectedIndex()] +I18n.t("；终端上下文=","; terminal context=")+(rows<0?I18n.t("全部","all"):rows+I18n.t("行"," lines"))+I18n.t("；指定日志数=","; logs=")+logCount+I18n.t("；协作 SSH=","; collaborating SSH=")+includeOtherSessions.isSelected()+I18n.t("；文件数=","; files=")+(references.size()-logCount)+I18n.t("；模型=","; model=")+chosenModel);
-        c.messages.add(new Message("user",requestText));c.markdown.setLength(0);render(c);persist();composer.setText("");attachmentModel.clear();c.busy=true;updateSendState();status.setText(I18n.t("正在生成…","Generating…"));long generation=++c.generation;
+        String sentContext=contextText;String requestText=question.isBlank()?DEFAULT_REQUESTS[Math.max(0,action.getSelectedIndex())]:question;long logCount=references.stream().filter(ReferenceItem::log).count();session.app.events.operation(session.profile.name(),I18n.t("AI助手请求开始；功能=","AI assistant request started; feature=")+ACTIONS[action.getSelectedIndex()] +I18n.t("；终端上下文=","; terminal context=")+(rows<0?I18n.t("全部","all"):rows+I18n.t("行"," lines"))+I18n.t("；指定日志数=","; logs=")+logCount+I18n.t("；协作 SSH=","; collaborating SSH=")+includeOtherSessions.isSelected()+I18n.t("；文件数=","; files=")+(references.size()-logCount)+I18n.t("；模型=","; model=")+chosenModel);
+        c.messages.add(new Message("user",requestText));c.markdown.setLength(0);render(c);persist();composer.setText("");attachmentModel.clear();refreshDefaultPrompt();c.busy=true;updateSendState();status.setText(I18n.t("正在生成…","Generating…"));long generation=++c.generation;
         c.future=session.app.workers.submit(()->{try{AssistantPlugin plugin=session.app.plugins.plugins().stream().filter(AssistantPlugin.class::isInstance).map(AssistantPlugin.class::cast).findFirst().orElseThrow();List<AssistantPlugin.Attachment> parsedFiles=new ArrayList<>();for(ReferenceItem item:references)if(!item.log())parsedFiles.add(AssistantAttachments.read(item.path()));String completeContext=sentContext+selectedLogs(references,sentContext.length());plugin.assistStreamFor(chosen.id(),chosenModel,task,requestText,completeContext,from,to,parsedFiles,delta->c.pending.add(delta));SwingUtilities.invokeLater(()->{if(generation==c.generation){flushStream(c);if(c.markdown.length()>0){c.messages.add(new Message("assistant",c.markdown.toString()));c.markdown.setLength(0);}render(c);persist();c.busy=false;updateSendState();session.app.events.operation(session.profile.name(),I18n.t("AI助手请求完成；模型=","AI assistant request finished; model=")+chosenModel);status.setText(I18n.t("完成。回复可选中复制；命令确认后再发送。","Done. Select the reply to copy it; confirm commands before sending."));}});}catch(Exception error){session.app.events.operation(session.profile.name(),I18n.t("AI助手请求失败：","AI assistant request failed: ")+error.getMessage());SwingUtilities.invokeLater(()->{if(generation==c.generation){flushStream(c);c.markdown.append(I18n.t("\n\n请求失败：","\n\nRequest failed: ")).append(error.getMessage());c.messages.add(new Message("assistant",c.markdown.toString()));c.markdown.setLength(0);render(c);persist();c.busy=false;updateSendState();status.setText(I18n.t("请求失败：","Request failed: ")+error.getMessage());}});}finally{for(ReferenceItem item:references)if(item.temporary()){pastedImages.remove(item.path());try{Files.deleteIfExists(item.path());}catch(IOException ignored){}}}});
     }
     private void updateSendState(){Conversation c=current();send.setEnabled(c!=null&&!c.busy);}

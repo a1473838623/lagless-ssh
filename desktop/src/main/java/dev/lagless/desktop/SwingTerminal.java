@@ -350,7 +350,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
             @Override public void mouseDragged(MouseEvent e) { selectionEnd = documentCell(e); dirty = true; }
         });
         addComponentListener(new ComponentAdapter() { @Override public void componentResized(ComponentEvent e) { resizeTerminal(); } });
-        addFocusListener(new FocusAdapter(){public void focusGained(FocusEvent e){cursorEpoch=System.nanoTime();cursorOn=true;dirty=true;}public void focusLost(FocusEvent e){remoteWheelQueue.cancel();dirty=true;}});
+        addFocusListener(new FocusAdapter(){public void focusGained(FocusEvent e){cursorEpoch=System.nanoTime();cursorOn=true;dirty=true;}public void focusLost(FocusEvent e){remoteWheelQueue.cancel();composition="";compositionCaret=0;dirty=true;}});
         redraw = new Timer(8,e->{
             if(!isShowing())return;
             long now=System.nanoTime();

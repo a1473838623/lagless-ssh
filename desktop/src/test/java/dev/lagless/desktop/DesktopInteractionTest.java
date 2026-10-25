@@ -31,6 +31,45 @@ class DesktopInteractionTest {
             editor.setText("question");key(editor,"ctrl V");assertSame(image,attached[0]);assertEquals("question",editor.getText());
         });
     }
+    static Object field(Object owner,String name)throws Exception{var f=owner.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(owner);}
+    static java.awt.event.InputMethodEvent ime(java.awt.Component source,String text,int committed){
+        return new java.awt.event.InputMethodEvent(source,java.awt.event.InputMethodEvent.INPUT_METHOD_TEXT_CHANGED,text==null?null:new java.text.AttributedString(text).getIterator(),committed,null,null);
+    }
+    @Test void imePreeditOverlayNeverOutlivesTheComposition()throws Exception{
+        SwingUtilities.invokeAndWait(()->{try{
+            ImeTextArea area=(ImeTextArea)DesktopApp.textArea();Object support=field(area,"ime");
+            area.dispatchEvent(ime(area,"ni",0));assertEquals("ni",field(support,"preedit"));
+            // Ending or cancelling a composition sends an event without text.
+            area.dispatchEvent(ime(area,null,0));assertEquals("",field(support,"preedit"));
+            area.dispatchEvent(ime(area,"hao",0));area.dispatchEvent(ime(area,"好",1));assertEquals("",field(support,"preedit"));assertEquals("好",area.getText());
+            area.dispatchEvent(ime(area,"ma",0));area.setText("");assertEquals("",field(support,"preedit"));
+            ImeTextField text=(ImeTextField)DesktopApp.field("");Object fieldSupport=field(text,"ime");
+            text.dispatchEvent(ime(text,"zh",0));assertEquals("zh",field(fieldSupport,"preedit"));
+            for(var listener:text.getFocusListeners())listener.focusLost(new java.awt.event.FocusEvent(text,java.awt.event.FocusEvent.FOCUS_LOST));assertEquals("",field(fieldSupport,"preedit"));
+        }catch(Exception e){throw new RuntimeException(e);}});
+    }
+    @Test void logTailKeepsExactlyTheLatestLinesAcrossPages()throws Exception{
+        Path log=dir.resolve("big.log");StringBuilder content=new StringBuilder();for(int i=0;i<20_000;i++)content.append("第 ").append(i).append(" 行 ").append("x".repeat(20)).append('\n');Files.writeString(log,content);
+        String tail=AssistantChatPanel.tailLines(log,15_000);String[] lines=tail.split("\n",-1);
+        assertEquals(15_000,lines.length);assertEquals("第 5000 行 "+"x".repeat(20),lines[0]);assertEquals("第 19999 行 "+"x".repeat(20),lines[lines.length-1]);
+        assertEquals("第 19999 行 "+"x".repeat(20),AssistantChatPanel.tailLines(log,1));
+        assertEquals(20_000,AssistantChatPanel.tailLines(log,100_000).split("\n",-1).length);
+    }
+    @Test void assistantShowsAnEditableDefaultPromptOnlyWhileContextIsSelected()throws Exception{
+        DesktopApp[] app={null};
+        try{SwingUtilities.invokeAndWait(()->{try{
+            app[0]=new DesktopApp(dir);SessionPane pane=new SessionPane(app[0],new Profile("ai","ai","example.invalid","user",22,"","",true,false));app[0].sessions.add(pane);
+            Object chat=field(pane,"assistantChat");JTextArea composer=(JTextArea)field(chat,"composer");
+            @SuppressWarnings("unchecked") JComboBox<String> action=(JComboBox<String>)field(chat,"action"),context=(JComboBox<String>)field(chat,"context");
+            JLabel status=(JLabel)field(chat,"status");JButton send=(JButton)field(chat,"send");
+            assertEquals("",composer.getText());send.doClick();assertFalse(status.getText().isBlank());assertEquals("",composer.getText());
+            action.setSelectedIndex(3);context.setSelectedIndex(1);
+            String translate=composer.getText();assertFalse(translate.isBlank());
+            action.setSelectedIndex(4);assertNotEquals(translate,composer.getText());assertFalse(composer.getText().isBlank());
+            context.setSelectedIndex(0);assertEquals("",composer.getText());
+            context.setSelectedIndex(2);composer.setText("my own words");action.setSelectedIndex(0);context.setSelectedIndex(0);assertEquals("my own words",composer.getText());
+        }catch(Exception e){throw new RuntimeException(e);}});}finally{if(app[0]!=null){SwingUtilities.invokeAndWait(app[0]::close);assertTrue(app[0].awaitShutdown(System.nanoTime()+TimeUnit.SECONDS.toNanos(10)));}}
+    }
     @Test void editorWrappingSharesTextAndDoesNotCreateLogicalNewlines()throws Exception{
         DesktopApp[] app={null};
         try{SwingUtilities.invokeAndWait(()->{try{app[0]=new DesktopApp(dir);SessionPane pane=new SessionPane(app[0],new Profile("wrap","wrap","example.invalid","user",22,"","",true,false));app[0].sessions.add(pane);pane.draft.setText("echo "+"word ".repeat(100));String original=pane.draft.getText();app[0].setEditorWrap(true);assertTrue(pane.draft.getLineWrap());assertTrue(pane.inlineDraft.getLineWrap());assertEquals(original,SessionPane.currentCommand(pane.draft));assertEquals(1,pane.draft.getLineCount());app[0].setEditorWrap(false);assertFalse(pane.draft.getLineWrap());assertEquals(original,pane.inlineDraft.getText());}catch(Exception e){throw new RuntimeException(e);}});}finally{if(app[0]!=null){SwingUtilities.invokeAndWait(app[0]::close);assertTrue(app[0].awaitShutdown(System.nanoTime()+TimeUnit.SECONDS.toNanos(10)),"desktop shutdown must finish before temporary home cleanup");}}
