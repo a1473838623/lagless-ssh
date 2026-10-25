@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import javax.crypto.*;
 import javax.crypto.spec.*;
 import java.io.*;
@@ -24,10 +25,10 @@ public final class BackupArchive {
         } finally { spec.clearPassword(); if (key != null) Arrays.fill(key, (byte) 0); }
     }
     public static void create(Path userHome, Path target, char[] password, Path appJar) throws Exception {
-        if (password.length < 10) throw new IllegalArgumentException("备份密码至少 10 位");
+        if (password.length < 10) throw new IllegalArgumentException(I18n.t("备份密码至少 10 位","Backup password must be at least 10 characters"));
         Path dest = target.toAbsolutePath().normalize();
         if (dest.startsWith(userHome.resolve(".lagless").toAbsolutePath().normalize())
-                || dest.startsWith(userHome.resolve(".ssh").toAbsolutePath().normalize())) throw new IOException("备份文件请保存在数据目录之外");
+                || dest.startsWith(userHome.resolve(".ssh").toAbsolutePath().normalize())) throw new IOException(I18n.t("备份文件请保存在数据目录之外","Save the backup outside the data folder"));
         Files.createDirectories(dest.getParent());
         Path temp = Files.createTempFile(dest.getParent(), ".lagless-backup-", ".tmp");
         try{Files.setAttribute(temp,"dos:hidden",true);}catch(UnsupportedOperationException|IOException ignored){}
@@ -49,7 +50,7 @@ public final class BackupArchive {
                                 if(relative.endsWith(".log.pending")||relative.endsWith(".tmp"))continue;
                                 long size;
                                 try{size=Files.size(file);}catch(NoSuchFileException vanished){continue;}
-                                if ((total += size) > MAX_BYTES) throw new IOException("备份超过 2 GiB，请先归档日志");
+                                if ((total += size) > MAX_BYTES) throw new IOException(I18n.t("备份超过 2 GiB，请先归档日志","Backup exceeds 2 GiB; archive logs first"));
                                 zip.putNextEntry(new ZipEntry(directory + "/" + relative));
                                 if(directory.equals(".lagless")&&relative.equals("desktop/assistant.json")){
                                     zip.write(AssistantSettings.load(root).portableBackup());
@@ -57,12 +58,12 @@ public final class BackupArchive {
                                     JournalTail.Snapshot snapshot=JournalTail.snapshot(file,size);
                                     try(InputStream in=Files.newInputStream(file)){
                                         byte[] bytes=new byte[65536];long remaining=snapshot.length();
-                                        while(remaining>0){int n=in.read(bytes,0,(int)Math.min(bytes.length,remaining));if(n<0)throw new EOFException("备份期间日志缩短："+file);zip.write(bytes,0,n);remaining-=n;}
+                                        while(remaining>0){int n=in.read(bytes,0,(int)Math.min(bytes.length,remaining));if(n<0)throw new EOFException(I18n.t("备份期间日志缩短：","Log shrank during backup: ")+file);zip.write(bytes,0,n);remaining-=n;}
                                     }
                                     zip.write(snapshot.suffix());
                                 }else try(InputStream in=Files.newInputStream(file)) {
                                     byte[] bytes=new byte[65536];long remaining=size;
-                                    while(remaining>0){int n=in.read(bytes,0,(int)Math.min(bytes.length,remaining));if(n<0)throw new EOFException("备份期间文件缩短："+file);zip.write(bytes,0,n);remaining-=n;}
+                                    while(remaining>0){int n=in.read(bytes,0,(int)Math.min(bytes.length,remaining));if(n<0)throw new EOFException(I18n.t("备份期间文件缩短：","File shrank during backup: ")+file);zip.write(bytes,0,n);remaining-=n;}
                                 }
                                 zip.closeEntry();
                             }
@@ -87,9 +88,9 @@ public final class BackupArchive {
         try {
             Path zipFile = stage.resolve("verified.zip");
             try (InputStream raw = Files.newInputStream(archive)) {
-                if (!Arrays.equals(raw.readNBytes(MAGIC.length), MAGIC)) throw new IOException("不支持的备份格式");
+                if (!Arrays.equals(raw.readNBytes(MAGIC.length), MAGIC)) throw new IOException(I18n.t("不支持的备份格式","Unsupported backup format"));
                 byte[] salt = raw.readNBytes(16), iv = raw.readNBytes(8);
-                if (salt.length != 16 || iv.length != 8) throw new IOException("备份已截断");
+                if (salt.length != 16 || iv.length != 8) throw new IOException(I18n.t("备份已截断","Backup is truncated"));
                 // Authenticate the entire archive before applying even its first entry.
                 try (InputStream decoded = new EncryptedInput(raw, key(password, salt), iv);
                      OutputStream out = Files.newOutputStream(zipFile)) { copyLimited(decoded, out, MAX_BYTES + 64 * 1024 * 1024); }
@@ -100,20 +101,20 @@ public final class BackupArchive {
                 ZipEntry entry;
                 while ((entry = zip.getNextEntry()) != null) {
                     String name = entry.getName();
-                    if (!validEntry(name) || !names.add(name) || names.size() > 50_000) throw new IOException("备份包含非法或重复路径：" + name);
+                    if (!validEntry(name) || !names.add(name) || names.size() > 50_000) throw new IOException(I18n.t("备份包含非法或重复路径：","Backup contains an invalid or duplicate path: ") + name);
                     if (entry.isDirectory()) continue;
                     Path file = payload.resolve(name); Files.createDirectories(file.getParent());
                     try (OutputStream out = Files.newOutputStream(file)) { total += copyLimited(zip, out, MAX_BYTES - total); }
                 }
             }
             if (!Files.isRegularFile(payload.resolve("manifest")) || !Files.readString(payload.resolve("manifest")).equals("lagless-backup-v1"))
-                throw new IOException("缺少有效备份清单");
+                throw new IOException(I18n.t("缺少有效备份清单","Valid backup manifest is missing"));
             Path accounts = payload.resolve(".lagless/desktop/accounts.json");
             if (Files.exists(accounts)) ProfileStore.decode(Files.readString(accounts));
             Path assistant=payload.resolve(".lagless/desktop/assistant.json");
             if(Files.isRegularFile(assistant))AssistantSettings.load(payload.resolve(".lagless")).save();
             Path application = payload.resolve("application/lagless.jar");
-            if (Files.exists(application) && !dev.lagless.Updater.looksLikeJar(application)) throw new IOException("备份中的应用 JAR 无效");
+            if (Files.exists(application) && !dev.lagless.Updater.looksLikeJar(application)) throw new IOException(I18n.t("备份中的应用 JAR 无效","Application JAR in the backup is invalid"));
             Path nativeArchive=payload.resolve("application/native.zip"), nativeStage=null;
             if(Files.exists(nativeArchive)) {
                 if(appJar!=null && Files.isDirectory(appJar))nativeStage=NativeUpdater.prepare(appJar,nativeArchive);
@@ -167,7 +168,7 @@ public final class BackupArchive {
     }
     private static void rejectSymlinks(Path target) throws IOException {
         for (Path p = target.toAbsolutePath(); p != null; p = p.getParent())
-            if (Files.isSymbolicLink(p)) throw new IOException("恢复目标含符号链接：" + p);
+            if (Files.isSymbolicLink(p)) throw new IOException(I18n.t("恢复目标含符号链接：","Restore target contains a symbolic link: ") + p);
     }
     /** Resolve OS-level aliases in the chosen restore directory, then protect paths inside it. */
     private static Path canonicalizeDestination(Path requested) throws IOException {
@@ -177,22 +178,22 @@ public final class BackupArchive {
             Path name=existing.getFileName();if(name!=null)suffix.addFirst(name);
             existing=existing.getParent();
         }
-        if(existing==null)throw new IOException("无法定位恢复目标目录："+requested);
+        if(existing==null)throw new IOException(I18n.t("无法定位恢复目标目录：","Cannot locate the restore target folder: ")+requested);
         Path result=existing.toRealPath();for(Path name:suffix)result=result.resolve(name);
         return result.normalize();
     }
     private static void rejectSymlinksBelow(Path root,Path target)throws IOException{
         Path normalizedRoot=root.toAbsolutePath().normalize(),normalizedTarget=target.toAbsolutePath().normalize();
-        if(!normalizedTarget.startsWith(normalizedRoot))throw new IOException("恢复目标超出所选目录："+target);
+        if(!normalizedTarget.startsWith(normalizedRoot))throw new IOException(I18n.t("恢复目标超出所选目录：","Restore target is outside the chosen folder: ")+target);
         Path current=normalizedRoot;
         for(Path part:normalizedRoot.relativize(normalizedTarget)){
             current=current.resolve(part);
-            if(Files.isSymbolicLink(current))throw new IOException("恢复目标含符号链接："+current);
+            if(Files.isSymbolicLink(current))throw new IOException(I18n.t("恢复目标含符号链接：","Restore target contains a symbolic link: ")+current);
         }
     }
     private static long copyLimited(InputStream in, OutputStream out, long limit) throws IOException {
         long total = 0; byte[] bytes = new byte[64 * 1024]; int n;
-        while ((n = in.read(bytes)) >= 0) { if ((total += n) > limit) throw new IOException("备份超过大小限制"); out.write(bytes, 0, n); }
+        while ((n = in.read(bytes)) >= 0) { if ((total += n) > limit) throw new IOException(I18n.t("备份超过大小限制","Backup exceeds the size limit")); out.write(bytes, 0, n); }
         return total;
     }
 
@@ -205,7 +206,7 @@ public final class BackupArchive {
             cipher.init(mode, key, new GCMParameterSpec(128, iv)); cipher.updateAAD(MAGIC);
             cipher.updateAAD(java.nio.ByteBuffer.allocate(4).putInt(sequence).array());
             return cipher.doFinal(bytes, 0, length);
-        } catch (GeneralSecurityException e) { throw new IOException("备份认证失败：密码错误或文件损坏", e); }
+        } catch (GeneralSecurityException e) { throw new IOException(I18n.t("备份认证失败：密码错误或文件损坏","Backup authentication failed: wrong password or damaged file"), e); }
     }
     private static final class EncryptedOutput extends OutputStream {
         private final DataOutputStream out; private final SecretKeySpec key; private final byte[] nonce, buffer = new byte[65536];
@@ -224,10 +225,10 @@ public final class BackupArchive {
         EncryptedInput(InputStream in, SecretKeySpec key, byte[] nonce) {this.in=new DataInputStream(in);this.key=key;this.nonce=nonce;}
         private boolean next() throws IOException {
             if(eof)return false;
-            int length=in.readInt();if(length<16||length>65552)throw new IOException("备份加密帧大小无效");
-            byte[] encrypted=in.readNBytes(length);if(encrypted.length!=length)throw new EOFException("备份已截断");
+            int length=in.readInt();if(length<16||length>65552)throw new IOException(I18n.t("备份加密帧大小无效","Invalid encrypted frame size in backup"));
+            byte[] encrypted=in.readNBytes(length);if(encrypted.length!=length)throw new EOFException(I18n.t("备份已截断","Backup is truncated"));
             buffer=crypt(Cipher.DECRYPT_MODE,key,nonce,sequence++,encrypted,length);offset=0;
-            if(buffer.length==0){eof=true;if(in.read()!=-1)throw new IOException("备份结束标记后仍有数据");return false;}return true;
+            if(buffer.length==0){eof=true;if(in.read()!=-1)throw new IOException(I18n.t("备份结束标记后仍有数据","Data found after the backup end marker"));return false;}return true;
         }
         @Override public int read() throws IOException {if(offset==buffer.length&&!next())return -1;return buffer[offset++]&255;}
         @Override public int read(byte[] bytes,int off,int len) throws IOException {if(len==0)return 0;if(offset==buffer.length&&!next())return -1;int count=Math.min(len,buffer.length-offset);System.arraycopy(buffer,offset,bytes,off,count);offset+=count;return count;}

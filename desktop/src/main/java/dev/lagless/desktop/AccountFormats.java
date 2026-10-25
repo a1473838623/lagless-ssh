@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import dev.lagless.SshConfigFile;
 import java.io.IOException;
 import java.nio.file.*;
@@ -12,7 +13,7 @@ import java.util.regex.*;
 public final class AccountFormats {
     private AccountFormats() { }
     public static List<Profile> read(Path file) throws IOException {
-        if (Files.size(file) > 16 * 1024 * 1024) throw new IOException("账号导入文件超过 16 MiB");
+        if (Files.size(file) > 16 * 1024 * 1024) throw new IOException(I18n.t("账号导入文件超过 16 MiB","Account import file exceeds 16 MiB"));
         String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
         if (name.endsWith(".json")) return ProfileStore.decode(Files.readString(file));
         byte[] bytes = Files.readAllBytes(file);
@@ -104,7 +105,7 @@ public final class AccountFormats {
                         .append("\"\r\n\"Protocol\"=\"ssh\"\r\n\"PortNumber\"=dword:").append(String.format("%08x", p.port()))
                         .append("\r\n\"PublicKeyFile\"=\"").append(reg(p.identity())).append("\"\r\n\r\n");
             } else if (format.equals("xsh")) {
-                if (profiles.size() != 1) throw new IllegalArgumentException("Xshell 每个文件只能导出一个账号");
+                if (profiles.size() != 1) throw new IllegalArgumentException(I18n.t("Xshell 每个文件只能导出一个账号","Xshell files can hold only one account each"));
                 out.append("[CONNECTION]\r\nProtocol=SSH\r\nHost=").append(p.host()).append("\r\nPort=").append(p.port())
                         .append("\r\n[CONNECTION:AUTHENTICATION]\r\nUserName=").append(p.user()).append("\r\nUserKey=").append(p.identity()).append("\r\n");
             } else {

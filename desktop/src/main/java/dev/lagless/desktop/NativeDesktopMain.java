@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import dev.lagless.Json;
 import java.nio.file.*;
 import java.util.*;
@@ -30,7 +31,7 @@ public final class NativeDesktopMain {
             }
         } catch (Throwable error) {
             error.printStackTrace(System.err);code=1;
-            if(args.length>0&&args[0].equals("--restart-after-update"))try{DesktopApp.theme();javax.swing.JOptionPane.showMessageDialog(null,error.getMessage(),"Lagless 更新未完成",javax.swing.JOptionPane.ERROR_MESSAGE);}catch(Throwable uiError){uiError.printStackTrace(System.err);}
+            if(args.length>0&&args[0].equals("--restart-after-update"))try{DesktopApp.theme();LanguageDialog.apply(DesktopRuntime.home(),false);javax.swing.JOptionPane.showMessageDialog(null,error.getMessage(),I18n.t("Lagless 更新未完成","Lagless update did not finish"),javax.swing.JOptionPane.ERROR_MESSAGE);}catch(Throwable uiError){uiError.printStackTrace(System.err);}
         }
         // Diagnostic tools must also terminate AWT threads after a failed check.
         System.exit(code);

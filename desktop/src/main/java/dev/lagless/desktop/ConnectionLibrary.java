@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import javax.swing.*;
 import javax.swing.event.*;
 import java.awt.*;
@@ -15,19 +16,19 @@ final class ConnectionLibrary {
     private volatile boolean firstPaintCompleted;
     boolean firstPaintCompleted(){return firstPaintCompleted;}
     ConnectionLibrary(Workspace workspace){
-        DesktopApp app=workspace.app;dialog=new JDialog(workspace.owner,"连接库",Dialog.ModalityType.MODELESS);dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        DesktopApp app=workspace.app;dialog=new JDialog(workspace.owner,I18n.t("连接库","Connections"),Dialog.ModalityType.MODELESS);dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         dialog.setIconImage(DesktopApp.appIcon());
         dialog.setName("connection-library");dialog.getRootPane().putClientProperty("lagless.library",this);
         JPanel content=new JPanel(new BorderLayout()){@Override protected void paintChildren(Graphics g){super.paintChildren(g);firstPaintCompleted=true;}};dialog.setContentPane(content);
-        JPanel header=new JPanel(new BorderLayout(8,8));header.setBorder(BorderFactory.createEmptyBorder(12,12,8,12));search.putClientProperty("JTextField.placeholderText","搜索名称、主机或用户");header.add(search,BorderLayout.CENTER);header.add(DesktopApp.button("＋",()->app.edit(dialog,null)),BorderLayout.EAST);
+        JPanel header=new JPanel(new BorderLayout(8,8));header.setBorder(BorderFactory.createEmptyBorder(12,12,8,12));search.putClientProperty("JTextField.placeholderText",I18n.t("搜索名称、主机或用户","Search name, host or user"));header.add(search,BorderLayout.CENTER);header.add(DesktopApp.button(I18n.t("＋","＋"),()->app.edit(dialog,null)),BorderLayout.EAST);
         JPopupMenu menu=new JPopupMenu();
-        popupAction(menu,"编辑所选",()->{Profile p=list.getSelectedValue();if(p!=null)app.edit(dialog,p);});
-        popupAction(menu,"删除所选",()->app.remove(dialog,list.getSelectedValue()));
+        popupAction(menu,I18n.t("编辑所选","Edit"),()->{Profile p=list.getSelectedValue();if(p!=null)app.edit(dialog,p);});
+        popupAction(menu,I18n.t("删除所选","Delete"),()->app.remove(dialog,list.getSelectedValue()));
         menu.addSeparator();
-        popupAction(menu,"导入账号",()->app.importAccounts(dialog));
-        popupAction(menu,"导出账号",()->app.exportAccounts(dialog,list.getSelectedValue()));
-        popupAction(menu,"读取终端配置",()->app.importTerminal(dialog));
-        JButton management=new JButton("管理连接",UiIcons.CHEVRON_DOWN);management.setHorizontalTextPosition(SwingConstants.LEFT);management.setIconTextGap(10);management.setFocusPainted(false);management.setMargin(new Insets(8,14,8,14));
+        popupAction(menu,I18n.t("导入账号","Import"),()->app.importAccounts(dialog));
+        popupAction(menu,I18n.t("导出账号","Export"),()->app.exportAccounts(dialog,list.getSelectedValue()));
+        popupAction(menu,I18n.t("读取终端配置","Read terminal config"),()->app.importTerminal(dialog));
+        JButton management=new JButton(I18n.t("管理连接","Manage connections"),UiIcons.CHEVRON_DOWN);management.setHorizontalTextPosition(SwingConstants.LEFT);management.setIconTextGap(10);management.setFocusPainted(false);management.setMargin(new Insets(8,14,8,14));
         management.setBackground(DesktopApp.ACCENT);management.setForeground(Color.WHITE);management.setOpaque(true);
         management.addActionListener(e->menu.show(management,0,management.getHeight()));
         header.add(management,BorderLayout.WEST);
@@ -47,11 +48,11 @@ final class ConnectionLibrary {
         Runnable refresh=()->{String term=search.getText().toLowerCase(Locale.ROOT);Profile previous=list.getSelectedValue();String id=previous==null?"":previous.id();filtered.clear();Profile selection=null;for(Profile p:app.profiles())if((p.name()+" "+p.host()+" "+p.user()).toLowerCase(Locale.ROOT).contains(term)){filtered.addElement(p);if(p.id().equals(id))selection=p;}if(selection!=null)list.setSelectedValue(selection,true);else if(!filtered.isEmpty())list.setSelectedIndex(0);};
         search.getDocument().addDocumentListener(new DocumentListener(){public void insertUpdate(DocumentEvent e){refresh.run();}public void removeUpdate(DocumentEvent e){refresh.run();}public void changedUpdate(DocumentEvent e){refresh.run();}});
         ListDataListener listener=new ListDataListener(){private boolean pending;private void refreshLater(){if(pending)return;pending=true;SwingUtilities.invokeLater(()->{pending=false;refresh.run();});}public void intervalAdded(ListDataEvent e){refreshLater();}public void intervalRemoved(ListDataEvent e){refreshLater();}public void contentsChanged(ListDataEvent e){refreshLater();}};app.accounts.addListDataListener(listener);dialog.addWindowListener(new WindowAdapter(){public void windowClosed(WindowEvent e){app.accounts.removeListDataListener(listener);}});
-        JPanel bottom=new JPanel(new BorderLayout(8,0));bottom.setBorder(BorderFactory.createEmptyBorder(8,12,12,12));bottom.add(new JLabel("单击选择 · 双击连接 · 上下移动排序"),BorderLayout.WEST);
+        JPanel bottom=new JPanel(new BorderLayout(8,0));bottom.setBorder(BorderFactory.createEmptyBorder(8,12,12,12));bottom.add(new JLabel(I18n.t("单击选择 · 双击连接 · 上下移动排序","Click to select · Double-click to connect · Reorder with Up/Down")),BorderLayout.WEST);
         JPanel actions=new JPanel(new FlowLayout(FlowLayout.RIGHT,6,0));
-        JButton up=DesktopApp.button("上移",()->move(app,-1)),down=DesktopApp.button("下移",()->move(app,1));
-        JButton edit=DesktopApp.button("编辑所选",()->{Profile p=list.getSelectedValue();if(p!=null)app.edit(dialog,p);});
-        JButton open=DesktopApp.button("连接",connect);
+        JButton up=DesktopApp.button(I18n.t("上移","Move up"),()->move(app,-1)),down=DesktopApp.button(I18n.t("下移","Move down"),()->move(app,1));
+        JButton edit=DesktopApp.button(I18n.t("编辑所选","Edit"),()->{Profile p=list.getSelectedValue();if(p!=null)app.edit(dialog,p);});
+        JButton open=DesktopApp.button(I18n.t("连接","Connect"),connect);
         actions.add(up);actions.add(down);actions.add(edit);actions.add(open);bottom.add(actions,BorderLayout.EAST);
         list.addListSelectionListener(e->{if(e.getValueIsAdjusting())return;int index=list.getSelectedIndex();up.setEnabled(index>0);down.setEnabled(index>=0&&index<filtered.size()-1);edit.setEnabled(index>=0);open.setEnabled(index>=0);});
         up.setEnabled(false);down.setEnabled(false);edit.setEnabled(false);open.setEnabled(false);

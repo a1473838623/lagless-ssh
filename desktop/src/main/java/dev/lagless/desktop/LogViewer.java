@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import dev.lagless.AnsiUtil;
 import javax.swing.*;
 import java.awt.*;
@@ -23,10 +24,10 @@ final class LogViewer {
     private final DefaultListModel<Path> files=new DefaultListModel<>();
     private final JList<Path> list=new JList<>(files);
     private final LogTextView text=new LogTextView();
-    private final JLabel status=new JLabel("选择一份日志查看");
-    private final JComboBox<String> kind=new JComboBox<>(new String[]{"终端历史","全量输入输出历史","软件日志"});
-    private final JCheckBox follow=new JCheckBox("跟随最新"),wrap=new JCheckBox("自动换行",true);
-    private final JButton rawExport=DesktopApp.button("导出原始远端输出",this::exportRaw);
+    private final JLabel status=new JLabel(I18n.t("选择一份日志查看","Choose a log to view"));
+    private final JComboBox<String> kind=new JComboBox<>(new String[]{I18n.t("终端历史","Terminal history"),I18n.t("全量输入输出历史","Full input/output history"),I18n.t("软件日志","Application log")});
+    private final JCheckBox follow=new JCheckBox(I18n.t("跟随最新","Follow latest")),wrap=new JCheckBox(I18n.t("自动换行","Wrap lines"),true);
+    private final JButton rawExport=DesktopApp.button(I18n.t("导出原始远端输出","Export raw remote output"),this::exportRaw);
     private final JTextField search=new ImeTextField(18);
     private final AtomicLong generation=new AtomicLong();
     private final javax.swing.Timer timer;
@@ -37,14 +38,14 @@ final class LogViewer {
         this(app,parent,events?2:1,initial);
     }
     LogViewer(DesktopApp app,Component parent,int category,Path initial){
-        this.app=app;dialog=new JDialog(parent instanceof Window w?w:SwingUtilities.getWindowAncestor(parent),"日志查看",Dialog.ModalityType.MODELESS);
+        this.app=app;dialog=new JDialog(parent instanceof Window w?w:SwingUtilities.getWindowAncestor(parent),I18n.t("日志查看","Log viewer"),Dialog.ModalityType.MODELESS);
         text.setEditable(false);text.setLineWrap(true);text.setWrapStyleWord(true);list.setFixedCellHeight(54);list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         list.setCellRenderer((view,path,index,chosen,focus)->{String name=path.getFileName().toString();String caption=name;
-            if(kind.getSelectedIndex()==2){int end=name.indexOf("-application-");if(end>0)try{String stamp=name.substring(0,end);String time=stamp.substring(0,10)+"T"+stamp.substring(11).replaceFirst("-",":").replaceFirst("-",":");caption=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault()).format(Instant.parse(time))+" · 软件运行";}catch(DateTimeException ignored){}
-                if(path.equals(app.events.path()))caption="本次运行 · "+caption;}
+            if(kind.getSelectedIndex()==2){int end=name.indexOf("-application-");if(end>0)try{String stamp=name.substring(0,end);String time=stamp.substring(0,10)+"T"+stamp.substring(11).replaceFirst("-",":").replaceFirst("-",":");caption=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault()).format(Instant.parse(time))+I18n.t(" · 软件运行"," · application");}catch(DateTimeException ignored){}
+                if(path.equals(app.events.path()))caption=I18n.t("本次运行 · ","This run · ")+caption;}
             JLabel label=new JLabel("<html>"+escape(caption)+"</html>");label.setToolTipText(path.toString());label.setBorder(BorderFactory.createEmptyBorder(8,8,8,8));label.setOpaque(true);label.setBackground(chosen?new Color(0xdcefe9):Color.WHITE);return label;});
-        JPanel top=new JPanel(new FlowLayout(FlowLayout.LEFT,8,8));top.add(kind);top.add(DesktopApp.button("刷新",this::reload));top.add(wrap);top.add(follow);top.add(search);top.add(DesktopApp.button("查找下一个",this::find));
-        JPanel bottom=new JPanel(new BorderLayout());JPanel actions=DesktopApp.row();actions.add(DesktopApp.button("导出当前记录",this::export));actions.add(rawExport);rawExport.setEnabled(false);bottom.add(actions,BorderLayout.NORTH);bottom.add(status,BorderLayout.SOUTH);
+        JPanel top=new JPanel(new FlowLayout(FlowLayout.LEFT,8,8));top.add(kind);top.add(DesktopApp.button(I18n.t("刷新","Refresh"),this::reload));top.add(wrap);top.add(follow);top.add(search);top.add(DesktopApp.button(I18n.t("查找下一个","Find next"),this::find));
+        JPanel bottom=new JPanel(new BorderLayout());JPanel actions=DesktopApp.row();actions.add(DesktopApp.button(I18n.t("导出当前记录","Export this log"),this::export));actions.add(rawExport);rawExport.setEnabled(false);bottom.add(actions,BorderLayout.NORTH);bottom.add(status,BorderLayout.SOUTH);
         JSplitPane split=new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,new EditorScrollPane(list),text);split.setDividerLocation(310);split.setResizeWeight(.25);split.setBorder(null);
         dialog.add(top,BorderLayout.NORTH);dialog.add(split,BorderLayout.CENTER);dialog.add(bottom,BorderLayout.SOUTH);dialog.setSize(1120,720);dialog.setLocationRelativeTo(parent);dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         list.addListSelectionListener(e->{if(!e.getValueIsAdjusting()){Path choice=list.getSelectedValue();if(!Objects.equals(selected,choice)){selected=choice;loaded.clear();page=lastTail=null;loading=false;updateRawExport();if(selected!=null)loadLatest(false);}}});kind.setSelectedIndex(Math.max(0,Math.min(category,2)));kind.addActionListener(e->{updateRawExport();reload();});wrap.addActionListener(e->{text.setLineWrap(wrap.isSelected());text.setWrapStyleWord(wrap.isSelected());});search.addActionListener(e->find());
@@ -60,7 +61,7 @@ final class LogViewer {
             Path directory=app.home.resolve(folder);if(!Files.isDirectory(directory))continue;try(var paths=Files.list(directory)){paths.filter(p->Files.isRegularFile(p,LinkOption.NOFOLLOW_LINKS)&&p.getFileName().toString().endsWith(".log")).forEach(result::add);}
         }result.sort(Comparator.comparing((Path p)->p.getFileName().toString()).reversed());
         if(category==2){Path current=app.events.path();if(result.remove(current))result.add(0,current);}return result;
-    },paths->{if(closed||request!=reloadRequest)return;Path previous=initial==null?selected:initial;files.clear();paths.forEach(files::addElement);if(previous!=null&&paths.contains(previous)){list.setSelectedValue(previous,true);if(Objects.equals(selected,previous)&&!loading)loadLatest(false);}else if(!paths.isEmpty())list.setSelectedIndex(0);else{selected=null;loaded.clear();page=lastTail=null;text.setText("");status.setText("暂无日志");}});}
+    },paths->{if(closed||request!=reloadRequest)return;Path previous=initial==null?selected:initial;files.clear();paths.forEach(files::addElement);if(previous!=null&&paths.contains(previous)){list.setSelectedValue(previous,true);if(Objects.equals(selected,previous)&&!loading)loadLatest(false);}else if(!paths.isEmpty())list.setSelectedIndex(0);else{selected=null;loaded.clear();page=lastTail=null;text.setText("");status.setText(I18n.t("暂无日志","No logs yet"));}});}
     private void loadLatest(boolean onlyIfChanged){
         Path file=selected;if(file==null||closed||loading)return;
         loading=true;long request=generation.incrementAndGet();
@@ -71,7 +72,7 @@ final class LogViewer {
                 lastTail=result;
                 if(page!=null&&page.length()!=result.length()){
                     page=new Page(page.text(),page.start(),page.end(),result.length());
-                    status.setText(selected.getFileName()+" · 已载入 "+page.start()+"–"+page.end()+" / "+page.length()+" 字节 · 滚动时自动读取其余内容");
+                    status.setText(selected.getFileName()+I18n.t(" · 已载入 "," · loaded ")+page.start()+"–"+page.end()+" / "+page.length()+I18n.t(" 字节 · 滚动时自动读取其余内容"," bytes · the rest loads as you scroll"));
                 }
                 return;
             }
@@ -109,13 +110,13 @@ final class LogViewer {
         if(first==null||last==null)return;
         page=new Page(content.toString(),first.start(),last.end(),lastTail==null?last.length():Math.max(last.length(),lastTail.length()));
         if(preserve)text.setTextPreservingView(page.text(),prefixChars);else{text.setText(page.text());text.scrollToBottom();}
-        status.setText(selected.getFileName()+" · 已载入 "+page.start()+"–"+page.end()+" / "+page.length()+" 字节 · 滚动时自动读取其余内容");
+        status.setText(selected.getFileName()+I18n.t(" · 已载入 "," · loaded ")+page.start()+"–"+page.end()+" / "+page.length()+I18n.t(" 字节 · 滚动时自动读取其余内容"," bytes · the rest loads as you scroll"));
     }
     static Page readPage(Path file,long offset)throws IOException{
         try(FileChannel in=FileChannel.open(file,StandardOpenOption.READ)){
             JournalTail.Snapshot snapshot=JournalTail.snapshot(file,in.size());long base=snapshot.length(),length=base+snapshot.suffix().length,start=offset<0?Math.max(0,length-PAGE_BYTES):Math.min(Math.max(0,offset),length);
             byte[] raw=new byte[(int)Math.min(PAGE_BYTES,length-start)];int disk=(int)Math.min(raw.length,Math.max(0,base-start));
-            if(disk>0){ByteBuffer bytes=ByteBuffer.wrap(raw,0,disk);in.position(start);while(bytes.hasRemaining()){if(in.read(bytes)<0)throw new EOFException("日志意外截断");}}
+            if(disk>0){ByteBuffer bytes=ByteBuffer.wrap(raw,0,disk);in.position(start);while(bytes.hasRemaining()){if(in.read(bytes)<0)throw new EOFException(I18n.t("日志意外截断","Log was truncated unexpectedly"));}}
             if(disk<raw.length)System.arraycopy(snapshot.suffix(),(int)Math.max(0,start-base),raw,disk,raw.length-disk);
             int from=0,to=raw.length;
             if(offset<0&&start>0){for(int i=0;i<to;i++)if(raw[i]=='\n'){from=i+1;break;}}
@@ -132,7 +133,7 @@ final class LogViewer {
             long start=Math.max(0,Math.min(requestedStart,length)),end=Math.max(start,Math.min(requestedEnd,length));
             end=Math.min(end,start+PAGE_BYTES);
             byte[] raw=new byte[(int)(end-start)];int disk=(int)Math.min(raw.length,Math.max(0,base-start));
-            if(disk>0){ByteBuffer bytes=ByteBuffer.wrap(raw,0,disk);in.position(start);while(bytes.hasRemaining())if(in.read(bytes)<0)throw new EOFException("日志意外截断");}
+            if(disk>0){ByteBuffer bytes=ByteBuffer.wrap(raw,0,disk);in.position(start);while(bytes.hasRemaining())if(in.read(bytes)<0)throw new EOFException(I18n.t("日志意外截断","Log was truncated unexpectedly"));}
             if(disk<raw.length)System.arraycopy(snapshot.suffix(),(int)Math.max(0,start-base),raw,disk,raw.length-disk);
             int from=0,to=raw.length;
             if(alignStart&&start>0)for(int i=0;i<to;i++)if(raw[i]=='\n'){from=i+1;break;}
@@ -142,9 +143,9 @@ final class LogViewer {
             return new Page(AnsiUtil.strip(new String(raw,from,to-from,StandardCharsets.UTF_8)),start+from,start+to,length);
         }
     }
-    private void find(){String term=search.getText();if(term.isEmpty())return;String content=text.getText();int at=content.indexOf(term,text.getSelectionEnd());if(at<0)at=content.indexOf(term);if(at>=0){text.requestFocusInWindow();text.select(at,at+term.length());}else status.setText("当前已载入内容没有找到；滚动可继续读取更多内容。");}
-    private void export(){Path file=selected;if(file==null)return;Path target=DesktopApp.chooseSave(dialog,file.getFileName().toString());if(target==null)return;app.background(dialog,()->{JournalTail.export(file,target);return target;},saved->status.setText("已导出："+saved));}
+    private void find(){String term=search.getText();if(term.isEmpty())return;String content=text.getText();int at=content.indexOf(term,text.getSelectionEnd());if(at<0)at=content.indexOf(term);if(at>=0){text.requestFocusInWindow();text.select(at,at+term.length());}else status.setText(I18n.t("当前已载入内容没有找到；滚动可继续读取更多内容。","Not found in the loaded content; scroll to load more."));}
+    private void export(){Path file=selected;if(file==null)return;Path target=DesktopApp.chooseSave(dialog,file.getFileName().toString());if(target==null)return;app.background(dialog,()->{JournalTail.export(file,target);return target;},saved->status.setText(I18n.t("已导出：","Exported: ")+saved));}
     private void updateRawExport(){rawExport.setEnabled(kind.getSelectedIndex()==1&&selected!=null&&Files.isRegularFile(rawPath(selected)));}
     private static Path rawPath(Path log){return log.resolveSibling(log.getFileName()+".vt");}
-    private void exportRaw(){Path file=selected==null?null:rawPath(selected);if(file==null||!Files.isRegularFile(file))return;Path target=DesktopApp.chooseSave(dialog,file.getFileName().toString());if(target==null)return;app.background(dialog,()->{if(!file.toAbsolutePath().normalize().equals(target.toAbsolutePath().normalize()))Files.copy(file,target,StandardCopyOption.REPLACE_EXISTING);return target;},saved->status.setText("已导出原始远端输出："+saved));}
+    private void exportRaw(){Path file=selected==null?null:rawPath(selected);if(file==null||!Files.isRegularFile(file))return;Path target=DesktopApp.chooseSave(dialog,file.getFileName().toString());if(target==null)return;app.background(dialog,()->{if(!file.toAbsolutePath().normalize().equals(target.toAbsolutePath().normalize()))Files.copy(file,target,StandardCopyOption.REPLACE_EXISTING);return target;},saved->status.setText(I18n.t("已导出原始远端输出：","Exported raw remote output: ")+saved));}
 }

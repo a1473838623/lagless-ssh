@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
@@ -33,7 +34,7 @@ final class BottomInputPane extends JPanel {
         editorSurface.add(scroll,JLayeredPane.DEFAULT_LAYER);editorSurface.add(resizeHandle,JLayeredPane.PALETTE_LAYER);
         setName("terminal-input-area");add(terminalSurface);add(editor);
         resizeHandle.setName("local-editor-resize");resizeHandle.setPreferredSize(new Dimension(22,18));resizeHandle.setMinimumSize(new Dimension(22,18));
-        resizeHandle.setCursor(Cursor.getPredefinedCursor(Cursor.N_RESIZE_CURSOR));resizeHandle.setFocusable(false);resizeHandle.setToolTipText("上下拖动调节高度 · 向下扩展窗口和编辑区，向上缩小");
+        resizeHandle.setCursor(Cursor.getPredefinedCursor(Cursor.N_RESIZE_CURSOR));resizeHandle.setFocusable(false);resizeHandle.setToolTipText(I18n.t("上下拖动调节高度 · 向下扩展窗口和编辑区，向上缩小","Drag up or down to resize · down grows the window and editor, up shrinks them"));
         MouseAdapter drag=new MouseAdapter(){
             @Override public void mousePressed(MouseEvent e){if(!SwingUtilities.isLeftMouseButton(e))return;dragging=true;dragY=e.getYOnScreen();dragHeight=editorHeight;requestedHeight=editorHeight;dragTerminalHeight=terminalSurface.getHeight();dragWindow=SwingUtilities.getWindowAncestor(BottomInputPane.this);dragBounds=dragWindow==null?null:dragWindow.getBounds();terminal.beginLayoutResize();e.consume();}
             @Override public void mouseDragged(MouseEvent e){if(!dragging)return;requestedHeight=dragHeight+e.getYOnScreen()-dragY;if(!dragUpdates.isRunning())dragUpdates.start();e.consume();}

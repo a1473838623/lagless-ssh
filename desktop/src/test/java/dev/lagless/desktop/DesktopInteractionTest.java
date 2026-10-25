@@ -38,6 +38,31 @@ class DesktopInteractionTest {
     @Test void diskHistoryHasNoSmallLineCapAndRetainsAnsiUnicode()throws Exception{
         try(TerminalHistory history=new TerminalHistory(dir,"test")){for(int batch=0;batch<12;batch++){for(int i=0;i<1000;i++)assertTrue(history.append(new TerminalHistory.Row(80,"\u001b[32m行-"+(batch*1000+i)+"\u001b[0m")));history.force();}assertEquals(12000,history.count());assertEquals(0,history.omitted());assertTrue(history.read(0).model().rowText(0).contains("行-0"));assertTrue(history.read(11999).model().rowText(0).contains("行-11999"));assertEquals("\u001b[32m",history.read(0).model().penAt(0,0));assertTrue(Files.size(history.path())>100000);}
     }
+    @Test void terminalHistoryKeepsAutomaticWrapMarks()throws Exception{
+        try(TerminalHistory history=new TerminalHistory(dir,"wrap")){
+            assertTrue(history.append(new TerminalHistory.Row(10,"0123456789",true)));assertTrue(history.append(new TerminalHistory.Row(10,"abc")));history.force();
+            assertTrue(history.read(0).wrapped());assertFalse(history.read(1).wrapped());assertEquals(10,history.read(0).columns());
+            assertEquals("0123456789abc\n",history.plainText(0,1000));
+        }
+    }
+    @Test void ctrlCCopiesSelectionJoiningOnlyAutomaticWraps()throws Exception{
+        java.awt.datatransfer.Clipboard clipboard=new java.awt.datatransfer.Clipboard("copy fixture");SwingTerminal[] view={null};
+        SwingUtilities.invokeAndWait(()->{view[0]=new SwingTerminal();view[0].setClipboard(()->clipboard);});
+        try{
+            java.lang.reflect.Field screenField=SwingTerminal.class.getDeclaredField("screen");screenField.setAccessible(true);
+            int columns=((dev.lagless.ScreenModel)screenField.get(view[0])).cols();
+            String full="F".repeat(columns),wrapped="W".repeat(columns)+"tail";
+            SwingUtilities.invokeAndWait(()->view[0].display(full+"\r\n"+wrapped+"\r\nend"));
+            java.lang.reflect.Field start=SwingTerminal.class.getDeclaredField("selectionStart"),end=SwingTerminal.class.getDeclaredField("selectionEnd");start.setAccessible(true);end.setAccessible(true);
+            start.set(view[0],new java.awt.Point(0,0));end.set(view[0],new java.awt.Point(2,3));
+            assertTrue(view[0].hasSelection());
+            java.awt.event.KeyEvent ctrlC=new java.awt.event.KeyEvent(view[0],java.awt.event.KeyEvent.KEY_PRESSED,System.currentTimeMillis(),java.awt.event.InputEvent.CTRL_DOWN_MASK,java.awt.event.KeyEvent.VK_C,'\u0003');
+            SwingUtilities.invokeAndWait(()->{for(java.awt.event.KeyListener listener:view[0].getKeyListeners())listener.keyPressed(ctrlC);});
+            assertTrue(ctrlC.isConsumed());
+            assertEquals(full+"\n"+wrapped+"\nend",clipboard.getData(java.awt.datatransfer.DataFlavor.stringFlavor));
+            assertFalse(view[0].hasSelection());
+        }finally{SwingUtilities.invokeAndWait(view[0]::close);}
+    }
     @Test void scrollingPausesFollowAndTerminalHistoryExcludesFullScreenRedraw()throws Exception{
         SwingTerminal[] view={null};TerminalHistory history=new TerminalHistory(dir,"screen");SwingUtilities.invokeAndWait(()->{view[0]=new SwingTerminal();view[0].setSize(900,400);view[0].setHistory(history);view[0].display("line-zero\r\n"+"stream\r\n".repeat(100));view[0].showHistory(0);});
         try{await(()->view[0].displayedText().contains("line-zero"));long start=view[0].viewportStart();SwingUtilities.invokeAndWait(()->view[0].display("new-output\r\n".repeat(20)));assertFalse(view[0].followingLive());assertEquals(start,view[0].viewportStart());SwingUtilities.invokeAndWait(()->view[0].setLocalEditing(false));long old=history.count();SwingUtilities.invokeAndWait(()->view[0].display("\u001b[?1049h\u001b[HClaude frame\r\nanswer before redraw"));Thread.sleep(280);SwingUtilities.invokeAndWait(()->view[0].display("\u001b[2J"));history.force();assertEquals(old,history.count());for(long i=0;i<history.count();i++)assertFalse(history.read(i).model().rowText(0).contains("Claude frame"));SwingUtilities.invokeAndWait(view[0]::followLatest);assertTrue(view[0].followingLive());}finally{SwingUtilities.invokeAndWait(view[0]::close);}

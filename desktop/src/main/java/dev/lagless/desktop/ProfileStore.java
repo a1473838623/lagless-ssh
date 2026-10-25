@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import dev.lagless.Json;
 import java.io.IOException;
 import java.nio.file.*;
@@ -15,19 +16,19 @@ public final class ProfileStore {
     public static List<Profile> decode(String text) throws IOException {
         try {
             Object root = Json.parse(text);
-            if (Json.number(root, 0, "version") != 1) throw new IOException("不支持的账号格式版本");
+            if (Json.number(root, 0, "version") != 1) throw new IOException(I18n.t("不支持的账号格式版本","Unsupported account file version"));
             List<Profile> result = new ArrayList<>();
-            if (!(Json.get(root, "accounts") instanceof List<?>)) throw new IOException("缺少账号列表");
+            if (!(Json.get(root, "accounts") instanceof List<?>)) throw new IOException(I18n.t("缺少账号列表","Account list is missing"));
             Set<String> ids = new HashSet<>();
             for (Object entry : Json.list(root, "accounts")) {
-                if (!(entry instanceof Map<?, ?> object)) throw new IOException("账号条目必须是对象");
+                if (!(entry instanceof Map<?, ?> object)) throw new IOException(I18n.t("账号条目必须是对象","Each account entry must be an object"));
                 Profile p = Profile.from(object);
-                if (!ids.add(p.id())) throw new IOException("重复的账号 ID");
+                if (!ids.add(p.id())) throw new IOException(I18n.t("重复的账号 ID","Duplicate account ID"));
                 result.add(p);
             }
             DesktopApp.validateRoutes(result);
             return result;
-        } catch (IllegalArgumentException | ClassCastException e) { throw new IOException("账号文件无效", e); }
+        } catch (IllegalArgumentException | ClassCastException e) { throw new IOException(I18n.t("账号文件无效","Invalid account file"), e); }
     }
     public static String encode(List<Profile> profiles) {
         return Json.stringify(Map.of("version", 1, "accounts", profiles.stream().map(Profile::json).toList()));

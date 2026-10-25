@@ -19,6 +19,8 @@ public final class ScreenModel {
     /** Optional desktop history sink. CLI users pay no allocation cost when it is absent. */
     public interface HistoryListener {
         void scrolled(int[] characters,String[] pens);
+        /** Same as {@link #scrolled(int[],String[])}, also saying whether the row continues on the next one. */
+        default void scrolled(int[] characters,String[] pens,boolean wrapped){scrolled(characters,pens);}
         default void beforeClear(ScreenModel screen){}
         /** First write of a new cursor-addressed run, before existing text is replaced. */
         default void beforeOverwrite(ScreenModel screen,int row){}
@@ -49,6 +51,9 @@ public final class ScreenModel {
     private String[][] pens;
     private int[][] savedChars;
     private String[][] savedPens;
+    /** Rows the cursor left by automatic wrapping, so their text continues on the next row. */
+    private boolean[] wrapped;
+    private boolean[] savedWrapped;
 
     private int row;
     private int col;
@@ -75,6 +80,7 @@ public final class ScreenModel {
         this.rows = Math.max(1, rows);
         chars = blankChars(this.cols, this.rows);
         pens = blankPens(this.cols, this.rows);
+        wrapped = new boolean[this.rows];
         top = 0;
         bottom = this.rows - 1;
     }
@@ -132,6 +138,11 @@ public final class ScreenModel {
         return chars[r][c];
     }
 
+    /** True when row {@code r} was filled by automatic wrapping, not ended by a line break. */
+    public boolean wrapped(int r) {
+        return r >= 0 && r < rows && wrapped[r];
+    }
+
     public String penAt(int r, int c) {
         if (r < 0 || r >= rows || c < 0 || c >= cols) {
             return "";
@@ -161,9 +172,11 @@ public final class ScreenModel {
         if(history!=null&&(newRows<rows||newCols<cols))history.beforeClear(this);
         chars = copyChars(chars, newCols, newRows);
         pens = copyPens(pens, newCols, newRows);
+        wrapped = Arrays.copyOf(wrapped, newRows);
         if (savedChars != null) {
             savedChars = copyChars(savedChars, newCols, newRows);
             savedPens = copyPens(savedPens, newCols, newRows);
+            savedWrapped = Arrays.copyOf(savedWrapped, newRows);
         }
         cols = newCols;
         rows = newRows;
@@ -391,6 +404,9 @@ public final class ScreenModel {
         }
         if (pendingWrap || col + w > cols) {
             if (autowrap) {
+                // Below a scroll region the cursor cannot move down, so the
+                // same row is rewritten and does not continue anywhere.
+                wrapped[row] = row == bottom || row < rows - 1;
                 col = 0;
                 lineFeed();
             } else {
@@ -512,6 +528,9 @@ public final class ScreenModel {
         }
         Arrays.fill(chars[r], from, to, ' ');
         Arrays.fill(pens[r], from, to, pen);
+        if (to == cols) {
+            wrapped[r] = false;
+        }
         markRow(r);
         pendingWrap = false;
     }
@@ -550,15 +569,17 @@ public final class ScreenModel {
 
     private void scrollUp(int from, int to, int n) {
         n = Math.min(n, to - from + 1);
-        if(history!=null)for(int r=from;r<from+n;r++)history.scrolled(chars[r].clone(),pens[r].clone());
+        if(history!=null)for(int r=from;r<from+n;r++)history.scrolled(chars[r].clone(),pens[r].clone(),wrapped[r]);
         for (int r = from; r <= to; r++) {
             int src = r + n;
             if (src <= to) {
                 chars[r] = chars[src];
                 pens[r] = pens[src];
+                wrapped[r] = wrapped[src];
             } else {
                 chars[r] = blankRow(cols);
                 pens[r] = penRow(cols, pen);
+                wrapped[r] = false;
             }
             markRow(r);
         }
@@ -572,9 +593,11 @@ public final class ScreenModel {
             if (src >= from) {
                 chars[r] = chars[src];
                 pens[r] = pens[src];
+                wrapped[r] = wrapped[src];
             } else {
                 chars[r] = blankRow(cols);
                 pens[r] = penRow(cols, pen);
+                wrapped[r] = false;
             }
             markRow(r);
         }
@@ -614,14 +637,18 @@ public final class ScreenModel {
             }
             savedChars = chars;
             savedPens = pens;
+            savedWrapped = wrapped;
             chars = blankChars(cols, rows);
             pens = blankPens(cols, rows);
+            wrapped = new boolean[rows];
         } else {
             if (savedChars != null) {
                 chars = savedChars;
                 pens = savedPens;
+                wrapped = savedWrapped;
                 savedChars = null;
                 savedPens = null;
+                savedWrapped = null;
             }
             if (saveCursor) {
                 restoreCursor();
@@ -636,8 +663,10 @@ public final class ScreenModel {
         if(history!=null)history.beforeClear(this);
         chars = blankChars(cols, rows);
         pens = blankPens(cols, rows);
+        wrapped = new boolean[rows];
         savedChars = null;
         savedPens = null;
+        savedWrapped = null;
         row = 0;
         col = 0;
         pendingWrap = false;

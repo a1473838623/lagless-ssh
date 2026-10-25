@@ -211,12 +211,12 @@ public final class Updater {
         boolean matching=identity.equals(Json.string(saved,"identity"));
         long offset=matching&&Files.isRegularFile(dest)?Files.size(dest):0;
         if(offset>0&&(asset.size()>0&&offset==asset.size()||asset.size()<=0&&Boolean.TRUE.equals(Json.get(saved,"complete")))){
-            progress.accept(new Progress("复用已下载的更新包",-1,-1));progress.accept(new Progress(asset.name(),offset,offset));return;
+            progress.accept(new Progress(I18n.t("复用已下载的更新包","Reusing the downloaded update package"),-1,-1));progress.accept(new Progress(asset.name(),offset,offset));return;
         }
         if(asset.size()>0&&offset>=asset.size())offset=0;
         String validator=matching?Json.string(saved,"validator"):null;
         for(int attempt=0;attempt<2;attempt++){
-        progress.accept(new Progress(offset>0?"正在从 "+offset+" 字节处继续下载…":"正在连接下载服务器…",-1,-1));
+        progress.accept(new Progress(offset>0?I18n.t("正在从 ","Resuming download from ")+offset+I18n.t(" 字节处继续下载…"," bytes…"):I18n.t("正在连接下载服务器…","Connecting to the download server…"),-1,-1));
         // The asset API URL works for private repositories too; it answers with
         // a redirect to storage that must be followed without the token.
         URI uri = URI.create(asset.apiUrl() != null ? asset.apiUrl() : asset.browserUrl());
@@ -233,12 +233,12 @@ public final class Updater {
             HttpRequest.Builder redirected=HttpRequest.newBuilder(URI.create(location.get()))
                     .timeout(TIMEOUT).header("User-Agent", "lagless-ssh");
             range(redirected,offset,validator);HttpRequest plain=redirected.GET().build();
-            progress.accept(new Progress("正在连接更新包存储服务器…",-1,-1));
+            progress.accept(new Progress(I18n.t("正在连接更新包存储服务器…","Connecting to the update storage server…"),-1,-1));
             res = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build()
                     .send(plain, HttpResponse.BodyHandlers.ofInputStream());
             code = res.statusCode();
         }
-        if(code==416&&offset>0){res.body().close();offset=0;validator=null;progress.accept(new Progress("服务器无法续传，正在重新下载…",-1,-1));continue;}
+        if(code==416&&offset>0){res.body().close();offset=0;validator=null;progress.accept(new Progress(I18n.t("服务器无法续传，正在重新下载…","Server cannot resume; downloading again…"),-1,-1));continue;}
         if (code != 200&&code!=206) {
             res.body().close();
             throw new IOException("download failed with HTTP " + code);
@@ -249,8 +249,8 @@ public final class Updater {
             java.util.regex.Matcher range=java.util.regex.Pattern.compile("bytes ([0-9]+)-([0-9]+)/([0-9]+)").matcher(res.headers().firstValue("Content-Range").orElse(""));
             boolean valid=false;
             try{if(range.matches()){long first=Long.parseLong(range.group(1)),last=Long.parseLong(range.group(2)),length=Long.parseLong(range.group(3));valid=first==offset&&last>=first&&last<length&&(asset.size()<=0||asset.size()==length)&&(validator==null||validator.isEmpty()||nextValidator.isEmpty()||validator.equals(nextValidator));total=length;}}catch(NumberFormatException ignored){}
-            if(!valid){res.body().close();if(offset>0&&attempt==0){offset=0;validator=null;progress.accept(new Progress("续传响应不匹配，正在重新下载…",-1,-1));continue;}throw new IOException("更新包续传响应无效");}
-        }else if(offset>0){offset=0;progress.accept(new Progress("服务器不支持续传，正在重新下载…",-1,-1));}
+            if(!valid){res.body().close();if(offset>0&&attempt==0){offset=0;validator=null;progress.accept(new Progress(I18n.t("续传响应不匹配，正在重新下载…","Resume response mismatch; downloading again…"),-1,-1));continue;}throw new IOException(I18n.t("更新包续传响应无效","Invalid resume response for the update package"));}
+        }else if(offset>0){offset=0;progress.accept(new Progress(I18n.t("服务器不支持续传，正在重新下载…","Server does not support resuming; downloading again…"),-1,-1));}
         try (InputStream in = res.body();OutputStream target=offset>0?Files.newOutputStream(dest,StandardOpenOption.APPEND):Files.newOutputStream(dest)) {
             // Truncate a different/obsolete representation before changing its
             // identity: a crash must not bind old bytes to the new asset.
@@ -263,11 +263,11 @@ public final class Updater {
                 if(now-last>=150_000_000L){progress.accept(new Progress(asset.name(),received,total));last=now;}
             }
             progress.accept(new Progress(asset.name(),received,total));
-            if(total>0&&received!=total)throw new IOException("更新包尚未下载完整，已保留 "+received+" 字节供下次续传");
+            if(total>0&&received!=total)throw new IOException(I18n.t("更新包尚未下载完整，已保留 ","Update package is incomplete; kept ")+received+I18n.t(" 字节供下次续传"," bytes to resume next time"));
         }
         saveDownloadMetadata(metadata,identity,nextValidator,true);return;
         }
-        throw new IOException("更新包无法续传，请重试下载");
+        throw new IOException(I18n.t("更新包无法续传，请重试下载","Update package cannot resume; download again"));
     }
 
     private static void range(HttpRequest.Builder request,long offset,String validator){if(offset>0){request.header("Range","bytes="+offset+"-");if(validator!=null&&!validator.isBlank())request.header("If-Range",validator);}}
@@ -383,7 +383,7 @@ public final class Updater {
         Path part = jar.resolveSibling(jar.getFileName() + ".part");
         Path staged = jar.resolveSibling(jar.getFileName() + ".new");
         download(asset, part);
-        progress.accept(new Progress("正在校验更新文件…",-1,-1));
+        progress.accept(new Progress(I18n.t("正在校验更新文件…","Verifying update files…"),-1,-1));
         long size = Files.size(part);
         if (asset.size() > 0 && size != asset.size() || !isCompatibleUpdate(jar, part)) {
             discardDownload(part);
@@ -477,9 +477,9 @@ public final class Updater {
 
     public static void stageRollback(Path jar) throws IOException {
         synchronized (UPDATE_LOCK) {
-            if (jar == null) throw new IOException("从 class 文件运行时无法回滚应用 JAR");
+            if (jar == null) throw new IOException(I18n.t("从 class 文件运行时无法回滚应用 JAR","Cannot roll back the application JAR when running from class files"));
             Path rollback = jar.resolveSibling(jar.getFileName() + ".rollback");
-            if (!Files.isRegularFile(rollback) || !isCompatibleUpdate(jar, rollback)) throw new IOException("没有与当前版本类型相同的有效上一版本备份");
+            if (!Files.isRegularFile(rollback) || !isCompatibleUpdate(jar, rollback)) throw new IOException(I18n.t("没有与当前版本类型相同的有效上一版本备份","No valid previous-version backup of the same type"));
             Path temp = jar.resolveSibling(jar.getFileName() + ".part");
             Files.copy(rollback, temp, StandardCopyOption.REPLACE_EXISTING);
             Files.move(temp, jar.resolveSibling(jar.getFileName() + ".new"), StandardCopyOption.REPLACE_EXISTING);

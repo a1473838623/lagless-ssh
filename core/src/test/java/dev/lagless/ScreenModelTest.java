@@ -138,4 +138,35 @@ class ScreenModelTest {
         assertEquals("a-----z", m.rowText(0).stripTrailing());
         assertEquals(7, m.col());
     }
+
+    @Test
+    void marksOnlyAutomaticWrapsAsContinuedRows() {
+        ScreenModel m = new ScreenModel(5, 4);
+        // Exactly full, then a real line break: not a wrap.
+        m.feed("abcde\r\n");
+        // Overflowing text continues on the next row.
+        m.feed("fghijkl");
+        assertFalse(m.wrapped(0));
+        assertTrue(m.wrapped(1));
+        assertFalse(m.wrapped(2));
+        // Erasing the end of a row ends its continuation.
+        m.feed("\u001b[2;3H\u001b[K");
+        assertFalse(m.wrapped(1));
+    }
+
+    @Test
+    void wrapFlagsScrollWithTheirRows() {
+        ScreenModel m = new ScreenModel(4, 2);
+        boolean[] scrolledWrapped = {false};
+        m.setHistoryListener(new ScreenModel.HistoryListener() {
+            public void scrolled(int[] characters, String[] pens) { }
+            public void scrolled(int[] characters, String[] pens, boolean wrapped) { scrolledWrapped[0] |= wrapped; }
+        });
+        m.feed("abcdefgh\r\nxy");
+        assertTrue(scrolledWrapped[0]);
+        assertFalse(m.wrapped(0));
+        assertFalse(m.wrapped(1));
+        m.feed("\u001b[?1049h");
+        assertFalse(m.wrapped(0));
+    }
 }

@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -32,15 +33,15 @@ final class JournalTail {
     }
     static byte[] read(Path log)throws IOException{
         Path pending=path(log);try{
-            if(Files.size(pending)>16*1024*1024)throw new IOException("未完成日志过大");return Files.readAllBytes(pending);
+            if(Files.size(pending)>16*1024*1024)throw new IOException(I18n.t("未完成日志过大","Unfinished log is too large"));return Files.readAllBytes(pending);
         }catch(NoSuchFileException e){return new byte[0];}
     }
     static Snapshot snapshot(Path log,long length)throws IOException{
         byte[] data=read(log);byte[] marker=HEADER.getBytes(StandardCharsets.US_ASCII);
         if(data.length<marker.length||!Arrays.equals(data,0,marker.length,marker,0,marker.length))return new Snapshot(length,data);
         int end=marker.length;while(end<data.length&&end<80&&data[end]!='\n')end++;
-        if(end>=data.length||end>=80)throw new IOException("未完成日志头无效");
-        long offset;try{offset=Long.parseLong(new String(data,marker.length,end-marker.length,StandardCharsets.US_ASCII));}catch(NumberFormatException e){throw new IOException("未完成日志偏移无效",e);}
+        if(end>=data.length||end>=80)throw new IOException(I18n.t("未完成日志头无效","Unfinished log header is invalid"));
+        long offset;try{offset=Long.parseLong(new String(data,marker.length,end-marker.length,StandardCharsets.US_ASCII));}catch(NumberFormatException e){throw new IOException(I18n.t("未完成日志偏移无效","Unfinished log offset is invalid"),e);}
         if(offset<0||offset>length)return new Snapshot(length,new byte[0]);
         return new Snapshot(offset,Arrays.copyOfRange(data,end+1,data.length));
     }
@@ -49,7 +50,7 @@ final class JournalTail {
         Snapshot snapshot=snapshot(log,Files.size(log));byte[] suffix=snapshot.suffix();long length=snapshot.length();Path dest=target.toAbsolutePath();Path temp=Files.createTempFile(dest.getParent(),".lagless-export-",".tmp");
         try{
             try(InputStream in=Files.newInputStream(log);OutputStream out=Files.newOutputStream(temp)){
-                byte[] bytes=new byte[65536];while(length>0){int n=in.read(bytes,0,(int)Math.min(length,bytes.length));if(n<0)throw new EOFException("日志意外截断");out.write(bytes,0,n);length-=n;}out.write(suffix);
+                byte[] bytes=new byte[65536];while(length>0){int n=in.read(bytes,0,(int)Math.min(length,bytes.length));if(n<0)throw new EOFException(I18n.t("日志意外截断","Log was truncated unexpectedly"));out.write(bytes,0,n);length-=n;}out.write(suffix);
             }
             try{Files.move(temp,dest,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}catch(AtomicMoveNotSupportedException e){Files.move(temp,dest,StandardCopyOption.REPLACE_EXISTING);}
         }finally{Files.deleteIfExists(temp);}

@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import java.io.*;
 import java.nio.*;
 import java.nio.channels.FileChannel;
@@ -35,13 +36,13 @@ public final class SessionJournal implements AutoCloseable {
             if (failure != null) throw failure;
             ByteBuffer bytes = StandardCharsets.UTF_8.encode(text);
             while (bytes.hasRemaining()) channel.write(bytes);
-        } catch (IOException e) { throw new UncheckedIOException("会话日志写入失败：" + path, e); }
+        } catch (IOException e) { throw new UncheckedIOException(I18n.t("会话日志写入失败：","Session log write failed: ") + path, e); }
     }
     synchronized void setPendingTail(String text){try{tail.set(text,channel.position());}catch(IOException e){throw new UncheckedIOException(e);}}
     synchronized void appendInteraction(String text){
         try{if(interaction==null)interaction=FileChannel.open(path.resolveSibling(path.getFileName()+".vt"),StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE);
             ByteBuffer bytes=StandardCharsets.UTF_8.encode(text);while(bytes.hasRemaining())interaction.write(bytes);
-        }catch(IOException e){throw new UncheckedIOException("全屏控制流记录失败："+path,e);}
+        }catch(IOException e){throw new UncheckedIOException(I18n.t("全屏控制流记录失败：","Full-screen stream recording failed: ")+path,e);}
     }
     public synchronized void force() throws IOException { if (channel.isOpen()) channel.force(false);if(interaction!=null&&interaction.isOpen())interaction.force(false);tail.force(); }
     public void export(Path target) throws IOException {
@@ -54,7 +55,7 @@ public final class SessionJournal implements AutoCloseable {
             // Copy a fixed snapshot outside the append lock: exporting a large log cannot stall rendering.
             try (InputStream in = Files.newInputStream(path); OutputStream out = Files.newOutputStream(temp)) {
                 byte[] bytes = new byte[65536];
-                while (length > 0) { int n = in.read(bytes, 0, (int)Math.min(bytes.length,length)); if(n<0)throw new EOFException("日志意外截断");out.write(bytes,0,n);length-=n; }
+                while (length > 0) { int n = in.read(bytes, 0, (int)Math.min(bytes.length,length)); if(n<0)throw new EOFException(I18n.t("日志意外截断","Log was truncated unexpectedly"));out.write(bytes,0,n);length-=n; }
                 out.write(suffix.getBytes(StandardCharsets.UTF_8));
             }
             try { Files.move(temp,dest,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING); }

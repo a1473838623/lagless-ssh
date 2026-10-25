@@ -20,6 +20,7 @@ public final class GalleryCapture {
 
     public static void main(String[] args) throws Exception {
         Path output = Path.of(args.length == 0 ? "docs/media" : args[0]);
+        dev.lagless.I18n.setLanguage(dev.lagless.I18n.Language.parse(System.getProperty("lagless.language", "zh")));
         Files.createDirectories(output);
         Path temporary = Files.createTempDirectory("lagless-gallery-");
         System.setProperty("user.home", temporary.toString());

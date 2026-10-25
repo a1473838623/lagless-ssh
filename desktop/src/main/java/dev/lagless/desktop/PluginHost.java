@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import dev.lagless.Json;
 import java.net.*;
 import java.nio.file.*;
@@ -23,7 +24,7 @@ public final class PluginHost implements AutoCloseable {
         directory=home.resolve("plugins");Files.createDirectories(directory);
         Path stateFile=directory.resolve(".states.properties");
         if(Files.isRegularFile(stateFile))try(var in=Files.newBufferedReader(stateFile)){states.load(in);}
-        plugins.add(new AssistantPlugin(home));log("已加载内置插件：AI助手");loadInstalled();
+        plugins.add(new AssistantPlugin(home));log(I18n.t("已加载内置插件：AI助手","Loaded built-in plugin: AI assistant"));loadInstalled();
     }
     private synchronized void loadInstalled() throws Exception {
         List<Path> entries=new ArrayList<>();
@@ -34,24 +35,24 @@ public final class PluginHost implements AutoCloseable {
         for (Path jar : entries) {
                 if(!enabled(jar))continue;
                 if (jar.toString().endsWith(".plugin.json")) {
-                    try { plugins.add(new ProcessPlugin(jar,configuration(jar),this::log));log("已加载进程插件："+jar.getFileName()); }
+                    try { plugins.add(new ProcessPlugin(jar,configuration(jar),this::log));log(I18n.t("已加载进程插件：","Loaded process plugin: ")+jar.getFileName()); }
                     catch (Exception e) { pluginError(jar.getFileName()+": "+e.getMessage(),e); }
                     continue;
                 }
                 if (!jar.toString().endsWith(".jar")) continue;
-                if (DesktopRuntime.nativeImage()) { pluginError(jar.getFileName()+": 原生版请使用进程插件（.plugin.json），或使用 JVM 版加载 JAR",null); continue; }
+                if (DesktopRuntime.nativeImage()) { pluginError(jar.getFileName()+I18n.t(": 原生版请使用进程插件（.plugin.json），或使用 JVM 版加载 JAR",": the native build needs process plugins (.plugin.json); use the JVM build to load JARs"),null); continue; }
                 URLClassLoader loader = new URLClassLoader(new URL[]{jar.toUri().toURL()}, LaglessPlugin.class.getClassLoader());
                 loaders.add(loader);
-                try { for(LaglessPlugin plugin:ServiceLoader.load(LaglessPlugin.class,loader)){plugin.configure(configuration(jar));plugins.add(plugin);log("已加载 Java 插件："+plugin.name());} }
+                try { for(LaglessPlugin plugin:ServiceLoader.load(LaglessPlugin.class,loader)){plugin.configure(configuration(jar));plugins.add(plugin);log(I18n.t("已加载 Java 插件：","Loaded Java plugin: ")+plugin.name());} }
                 catch (Exception | ServiceConfigurationError e) { pluginError(jar.getFileName() + ": " + e,e); }
         }
     }
-    private void log(String message){if(journal!=null)journal.record(null,"[插件] "+message);}
-    private void pluginError(String message,Throwable error){if(errors.size()<100)errors.add(message);if(journal!=null){if(error==null)log(message);else journal.error("插件",error);}}
+    private void log(String message){if(journal!=null)journal.record(null,I18n.t("[插件] ","[plugin] ")+message);}
+    private void pluginError(String message,Throwable error){if(errors.size()<100)errors.add(message);if(journal!=null){if(error==null)log(message);else journal.error(I18n.t("插件","Plugins"),error);}}
     Path directory(){return directory;}
     private Map<String,Object> configuration(Path item) throws java.io.IOException {
         Path file=configPath(item);if(!Files.isRegularFile(file))return Map.of();
-        Object parsed=Json.parse(Files.readString(file));if(!(parsed instanceof Map<?,?> object))throw new java.io.IOException("插件配置须为 JSON 对象");
+        Object parsed=Json.parse(Files.readString(file));if(!(parsed instanceof Map<?,?> object))throw new java.io.IOException(I18n.t("插件配置须为 JSON 对象","Plugin config must be a JSON object"));
         Map<String,Object> result=new LinkedHashMap<>();for(var entry:object.entrySet())if(entry.getKey() instanceof String key)result.put(key,entry.getValue());return result;
     }
     Path configPath(Path item){
@@ -79,7 +80,7 @@ public final class PluginHost implements AutoCloseable {
         for(LaglessPlugin plugin:plugins)if(!(plugin instanceof AssistantPlugin))try{plugin.close();}catch(Exception ignored){}
         for(URLClassLoader loader:loaders)try{loader.close();}catch(Exception ignored){}
         plugins.removeIf(p->!(p instanceof AssistantPlugin));loaders.clear();errors.clear();
-        try{loadInstalled();}catch(Exception error){pluginError("插件重新加载失败："+error.getMessage(),error);throw new java.io.IOException("插件重新加载失败",error);}
+        try{loadInstalled();}catch(Exception error){pluginError(I18n.t("插件重新加载失败：","Plugin reload failed: ")+error.getMessage(),error);throw new java.io.IOException(I18n.t("插件重新加载失败","Plugin reload failed"),error);}
     }
     public synchronized List<LaglessPlugin> plugins() { return List.copyOf(plugins); }
     public List<String> errors() { return List.copyOf(errors); }

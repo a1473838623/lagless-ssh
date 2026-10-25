@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import javax.swing.*;
 import javax.swing.text.Document;
 import java.awt.*;
@@ -56,7 +57,7 @@ final class LogTextView extends JPanel implements AutoCloseable {
             if(target>=0){vertical.setValue(target);e.consume();}
         }});
     }
-    private JPopupMenu menu(){JPopupMenu menu=new JPopupMenu();menu.setLightWeightPopupEnabled(false);JMenuItem copy=new JMenuItem("复制");copy.addActionListener(e->copy());menu.add(copy);JMenuItem all=new JMenuItem("全选");all.addActionListener(e->{anchor=0;selectionEnd=content.length();canvas.repaint();});menu.add(all);return menu;}
+    private JPopupMenu menu(){JPopupMenu menu=new JPopupMenu();menu.setLightWeightPopupEnabled(false);JMenuItem copy=new JMenuItem(I18n.t("复制","Copy"));copy.addActionListener(e->copy());menu.add(copy);JMenuItem all=new JMenuItem(I18n.t("全选","Select all"));all.addActionListener(e->{anchor=0;selectionEnd=content.length();canvas.repaint();});menu.add(all);return menu;}
     void onScrollEdges(Runnable older,Runnable newer,Runnable back){nearStart=older;nearEnd=newer;scrolledBack=back;}
     private void scrollEdges(int top,int height,int total){
         int threshold=Math.max(cellHeight*2,height/3);
@@ -64,7 +65,7 @@ final class LogTextView extends JPanel implements AutoCloseable {
         if(total-top-height<=threshold)nearEnd.run();
     }
     private void copy(){if(anchor==selectionEnd)return;try{ClipboardActions.putText(null,content.substring(Math.min(anchor,selectionEnd),Math.max(anchor,selectionEnd)));}catch(Exception error){DesktopApp.error(this,error);}}
-    private void fallback(String reason){if(canvas==null)return;removeAll();canvas=null;model.setFont(DesktopFonts.editor(14));model.setText(content);model.select(Math.min(anchor,selectionEnd),Math.max(anchor,selectionEnd));fallbackScroll=new EditorScrollPane(model);fallbackScroll.getVerticalScrollBar().addAdjustmentListener(e->{if(!updating)scrollEdges(fallbackScroll.getVerticalScrollBar().getValue(),fallbackScroll.getViewport().getHeight(),fallbackScroll.getVerticalScrollBar().getMaximum());});add(fallbackScroll);revalidate();repaint();setToolTipText("原生显示未能启用："+reason);}
+    private void fallback(String reason){if(canvas==null)return;removeAll();canvas=null;model.setFont(DesktopFonts.editor(14));model.setText(content);model.select(Math.min(anchor,selectionEnd),Math.max(anchor,selectionEnd));fallbackScroll=new EditorScrollPane(model);fallbackScroll.getVerticalScrollBar().addAdjustmentListener(e->{if(!updating)scrollEdges(fallbackScroll.getVerticalScrollBar().getValue(),fallbackScroll.getViewport().getHeight(),fallbackScroll.getVerticalScrollBar().getMaximum());});add(fallbackScroll);revalidate();repaint();setToolTipText(I18n.t("原生显示未能启用：","Native display could not start: ")+reason);}
     void setText(String value){content=value;model.setText(value);anchor=selectionEnd=0;position=0;columns=-1;if(canvas!=null){layoutLines();updating=true;try{vertical.setValue(0);}finally{updating=false;}}}
     void setTextPreservingView(String value,int prefixChars){
         int source=0,inside=0;

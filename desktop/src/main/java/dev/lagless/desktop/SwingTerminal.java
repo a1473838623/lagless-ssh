@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import dev.lagless.ScreenModel;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
@@ -93,7 +94,8 @@ public final class SwingTerminal extends JComponent implements AutoCloseable,Inp
     boolean followingLive(){return followLive;}
     long viewportStart(){return followLive&&history!=null?history.count():viewportStart;}
     void setHistory(TerminalHistory history){this.history=history;synchronized(screen){screen.setHistoryListener(new ScreenModel.HistoryListener(){
-        public void scrolled(int[] characters,String[] pens){beginRedraw(screen);if(!realtimeHistory(screen))appendHistory(TerminalHistory.Row.cells(characters,pens));}
+        public void scrolled(int[] characters,String[] pens){scrolled(characters,pens,false);}
+        public void scrolled(int[] characters,String[] pens,boolean wrapped){beginRedraw(screen);if(!realtimeHistory(screen))appendHistory(TerminalHistory.Row.cells(characters,pens,wrapped));}
         public void beforeClear(ScreenModel model){beginRedraw(model);if(!realtimeHistory(model)){for(TerminalHistory.Row row:ordinaryRows())appendHistory(row);history.setPendingTail(java.util.List.of());}}
         public void beforeOverwrite(ScreenModel model,int row){beginRedraw(model);}
         public void beforeEraseRow(ScreenModel model,int row){beginRedraw(model);}
@@ -136,7 +138,7 @@ public final class SwingTerminal extends JComponent implements AutoCloseable,Inp
         for(int row=0;row<=last;row++){
             int[] chars=new int[screen.cols()];String[] pens=new String[chars.length];
             for(int col=0;col<chars.length;col++){chars[col]=screen.charAt(row,col);pens[col]=screen.penAt(row,col);}
-            rows.add(TerminalHistory.Row.cells(chars,pens));
+            rows.add(TerminalHistory.Row.cells(chars,pens,screen.wrapped(row)));
         }
         return rows;
     }
@@ -201,7 +203,7 @@ public final class SwingTerminal extends JComponent implements AutoCloseable,Inp
             Exception error=failure;
             SwingUtilities.invokeLater(()->{
                 historyLoading=false;if(closed)return;
-                if(error!=null){notice.accept("读取终端历史失败："+error.getMessage());return;}
+                if(error!=null){notice.accept(I18n.t("读取终端历史失败：","Failed to read terminal history: ")+error.getMessage());return;}
                 if(!followLive&&viewportStart>=from&&viewportStart<from+page.size()){
                     pageStart=from;displayStart=viewportStart;historyPage=java.util.List.copyOf(page);historyPageStale=history.tailRevision()!=requestedRevision;invalidateFrame();
                 }
@@ -211,7 +213,7 @@ public final class SwingTerminal extends JComponent implements AutoCloseable,Inp
     }
     private void updateHistoryBar(){
         if(history==null)return;
-        if(history.omitted()>0&&lastOmitted==0){lastOmitted=history.omitted();notice.accept("终端历史写入缓冲过载，部分展示行省略；远端输出仍在全量输入输出历史中。");}
+        if(history.omitted()>0&&lastOmitted==0){lastOmitted=history.omitted();notice.accept(I18n.t("终端历史写入缓冲过载，部分展示行省略；远端输出仍在全量输入输出历史中。","Terminal history buffer overflowed and some display rows were skipped; remote output is still in the full input/output history."));}
 long revision=history.tailRevision();if(revision!=observedTailRevision){observedTailRevision=revision;if(pageStart>=0&&pageStart+historyPage.size()>Math.max(0,history.stableCount()-512))historyPageStale=true;}
         long count=history.count();int extent; synchronized(screen){extent=Math.max(1,screen.rows());}
         long max=count+extent;int maximum=(int)Math.min(Integer.MAX_VALUE,max);
@@ -234,7 +236,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
     JScrollBar historyScrollBar(){return historyBar;}
 
     public SwingTerminal() {
-        surface.add(this,BorderLayout.CENTER);surface.add(historyBar,BorderLayout.EAST);historyBar.setToolTipText("本地长期历史 · Shift+滚轮 / Shift+PageUp · Ctrl+End 回到当前应用画面");
+        surface.add(this,BorderLayout.CENTER);surface.add(historyBar,BorderLayout.EAST);historyBar.setToolTipText(I18n.t("本地长期历史 · Shift+滚轮 / Shift+PageUp · Ctrl+End 回到当前应用画面","Local long-term history · Shift+wheel / Shift+PageUp · Ctrl+End returns to the live screen"));
         historyBar.addAdjustmentListener(e->{if(!adjustingBar&&history!=null){long count=history.count();int range=historyBar.getMaximum()-historyBar.getVisibleAmount();showHistory(range<=0?count:Math.round(e.getValue()*(double)count/range));}});
         addMouseWheelListener(e->{
             RemoteWheelProtocol.Mode mode=wheelProtocol.mode();
@@ -273,6 +275,11 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
                 if(e.isShiftDown()&&(e.getKeyCode()==KeyEvent.VK_PAGE_UP||e.getKeyCode()==KeyEvent.VK_PAGE_DOWN)){scrollHistory((e.getKeyCode()==KeyEvent.VK_PAGE_UP?-1:1)*Math.max(1,screen.rows()-2));e.consume();return;}
                 if(e.isControlDown()&&e.getKeyCode()==KeyEvent.VK_END){followLatest();e.consume();return;}
                 if ((e.isControlDown() || e.isMetaDown()) && e.isShiftDown() && e.getKeyCode() == KeyEvent.VK_C) { copy(); e.consume(); return; }
+                // Ctrl+C copies a selection and clears it, so the next Ctrl+C
+                // reaches SSH as an interrupt again.
+                if ((e.isControlDown() || e.isMetaDown()) && !e.isShiftDown() && !e.isAltDown() && e.getKeyCode() == KeyEvent.VK_C && hasSelection()) {
+                    copy(); selectionStart = selectionEnd = null; dirty = true; e.consume(); return;
+                }
                 if ((e.isControlDown() || e.isMetaDown()) && e.isShiftDown() && e.getKeyCode() == KeyEvent.VK_V) { paste(); e.consume(); return; }
                 if(e.isShiftDown()&&e.getKeyCode()==KeyEvent.VK_INSERT){paste();e.consume();return;}
                 // Encode Alt letters on KEY_PRESSED: Windows menu processing can
@@ -399,7 +406,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
     private void repaintSurface(){if(nativeCanvas==null)repaint();else nativeCanvas.repaint();}
     private void fallbackRenderer(String reason){
         if(nativeCanvas==null)return;remove(nativeCanvas);nativeCanvas=null;revalidate();invalidateFrame();repaint();
-        notice.accept("原生显示未能启用，已回退兼容显示："+reason);
+        notice.accept(I18n.t("原生显示未能启用，已回退兼容显示：","Native display could not start; using compatible display: ")+reason);
     }
     private NativeGraphics.Frame nativeFrame(){
         refreshCachedFrame();
@@ -420,7 +427,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
         return new NativeGraphics.Frame(columns,frame.rows(),chars,fg,bg,cellWidth,cellHeight,ascent,offset,
                 cx,cy,frame.cursorVisible()&&terminalFocus()&&(cursorOn||!composition.isEmpty()),getFont().getSize2D(),getBackground().getRGB());
     }
-    public void setNotice(Consumer<String> notice) { this.notice = notice;notice.accept("显示后端："+NativeGraphics.status()); }
+    public void setNotice(Consumer<String> notice) { this.notice = notice;notice.accept(I18n.t("显示后端：","Display backend: ")+NativeGraphics.status()); }
     public void accepting(boolean value) { accepting = value; }
     public void endInput() { accepting=false; KeyInput current=input; if(current!=null)current.close(); }
     private String arrow(char c) { return "\u001b" + (appCursor ? "O" : "[") + c; }
@@ -438,11 +445,11 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
     boolean sendKeys(String text,String origin) {
         if(SwingUtilities.isEventDispatchThread())remoteWheelQueue.cancel();
         boolean onlyBreaks=text.chars().allMatch(ch->ch=='\r'||ch=='\n');
-        if(text.indexOf('\r')>=0||text.indexOf('\n')>=0)inputAudit.accept("终端提交按键；来源="+origin+"，CR="+text.chars().filter(ch->ch=='\r').count()+"，LF="+text.chars().filter(ch->ch=='\n').count()+"，仅换行="+onlyBreaks+"，字符数="+text.length());
-        if (!accepting || input == null) { notice.accept("连接未就绪；请在本地编辑窗保留命令。"); return false; }
+        if(text.indexOf('\r')>=0||text.indexOf('\n')>=0)inputAudit.accept(I18n.t("终端提交按键；来源=","Terminal submit key; source=")+origin+I18n.t("，CR=",", CR=")+text.chars().filter(ch->ch=='\r').count()+I18n.t("，LF=",", LF=")+text.chars().filter(ch->ch=='\n').count()+I18n.t("，仅换行=",", LF only=")+onlyBreaks+I18n.t("，字符数=",", chars=")+text.length());
+        if (!accepting || input == null) { notice.accept(I18n.t("连接未就绪；请在本地编辑窗保留命令。","Connection is not ready; keep the command in the local editor.")); return false; }
         boolean historyKey=text.contains("\u001b[5~")||text.contains("\u001b[6~");
         if(historyKey)beginRemoteHistory();
-        if (!input.offer(text)) { notice.accept("输入队列已满；此次输入未发送，请减小粘贴量。"); return false; }
+        if (!input.offer(text)) { notice.accept(I18n.t("输入队列已满；此次输入未发送，请减小粘贴量。","Input queue is full; this input was not sent. Paste less at once.")); return false; }
         if(!historyKey&&remoteHistoryNavigation)remoteHistoryNavigation=false;
         if(!followLive)SwingUtilities.invokeLater(this::followLatest);selectionStart = selectionEnd = null; cursorEpoch=System.nanoTime();cursorOn=true;dirty = true; return true;
     }
@@ -514,6 +521,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
         if(to<0||from>=length)return new SelectionRange(-1,-1);
         return new SelectionRange((int)Math.max(0,from),(int)Math.min(length-1,to));
     }
+    boolean hasSelection(){return selectionStart!=null&&selectionEnd!=null&&!selectionStart.equals(selectionEnd);}
     private static int compare(Point a,Point b){int row=Integer.compare(a.y,b.y);return row!=0?row:Integer.compare(a.x,b.x);}
     private String selectedText()throws IOException{
         if(selectionStart==null||selectionEnd==null||selectionStart.equals(selectionEnd))return displayedText();
@@ -523,8 +531,8 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
         StringBuilder text=new StringBuilder();
         for(int row=start.y;row<=end.y;row++){
             int firstColumn=row==start.y?start.x:0,lastColumn=row==end.y?end.x:columns-1;
-            ScreenModel historical=null;int screenRow=-1;
-            if(row<count){TerminalHistory.Row stored=history.read(row);if(stored!=null)historical=stored.model();}
+            ScreenModel historical=null;int screenRow=-1;boolean wrapped=false;
+            if(row<count){TerminalHistory.Row stored=history.read(row);if(stored!=null){historical=stored.model();wrapped=stored.wrapped();}}
             else screenRow=(int)(row-count);
             StringBuilder line=new StringBuilder();
             synchronized(screen){
@@ -532,25 +540,29 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
                     int cp=historical!=null?historical.charAt(0,col):screenRow>=0&&screenRow<screen.rows()?screen.charAt(screenRow,col):' ';
                     if(cp>=0)line.appendCodePoint(cp);
                 }
+                if(historical==null)wrapped=screen.wrapped(screenRow);
             }
-            text.append(line.toString().stripTrailing());
-            if(row<end.y)text.append('\n');
+            // An automatically wrapped row continues on the next one: no line
+            // break, and its trailing spaces are part of the text.
+            wrapped&=lastColumn>=(historical!=null?historical.cols():columns)-1;
+            text.append(wrapped?line:line.toString().stripTrailing());
+            if(row<end.y&&!wrapped)text.append('\n');
         }
         return text.toString();
     }
     void setClipboard(java.util.function.Supplier<Clipboard> supplier){clipboard=supplier;}
-    JPopupMenu popupMenu(){JPopupMenu menu=new JPopupMenu();JMenuItem copy=new JMenuItem("复制选区 / 当前屏幕");copy.addActionListener(e->{MenuSelectionManager.defaultManager().clearSelectedPath();copy();});menu.add(copy);JMenuItem paste=new JMenuItem("粘贴");paste.addActionListener(e->{MenuSelectionManager.defaultManager().clearSelectedPath();paste();});menu.add(paste);menu.addSeparator();JMenuItem latest=new JMenuItem("回到最新输出");latest.addActionListener(e->followLatest());menu.add(latest);return menu;}
-    private void copy(){try{ClipboardActions.putText(clipboard==null?null:clipboard.get(),selectedText());}catch(Exception e){notice.accept("复制失败，请重试："+e.getMessage());}}
-    private void paste(){try{pasteText(ClipboardActions.text(clipboard==null?null:clipboard.get()));}catch(Exception e){notice.accept("粘贴失败，请重试："+e.getMessage());}}
+    JPopupMenu popupMenu(){JPopupMenu menu=new JPopupMenu();JMenuItem copy=new JMenuItem(I18n.t("复制选区 / 当前屏幕","Copy selection / screen"));copy.addActionListener(e->{MenuSelectionManager.defaultManager().clearSelectedPath();copy();});menu.add(copy);JMenuItem paste=new JMenuItem(I18n.t("粘贴","Paste"));paste.addActionListener(e->{MenuSelectionManager.defaultManager().clearSelectedPath();paste();});menu.add(paste);menu.addSeparator();JMenuItem latest=new JMenuItem(I18n.t("回到最新输出","Jump to latest output"));latest.addActionListener(e->followLatest());menu.add(latest);return menu;}
+    private void copy(){try{ClipboardActions.putText(clipboard==null?null:clipboard.get(),selectedText());}catch(Exception e){notice.accept(I18n.t("复制失败，请重试：","Copy failed, try again: ")+e.getMessage());}}
+    private void paste(){try{pasteText(ClipboardActions.text(clipboard==null?null:clipboard.get()));}catch(Exception e){notice.accept(I18n.t("粘贴失败，请重试：","Paste failed, try again: ")+e.getMessage());}}
     boolean pasteText(String original){
-        if(original.length()>65536){notice.accept("一次粘贴最多 64 KiB");return false;}
-        if(!accepting){notice.accept("连接未就绪，粘贴未发送；剪贴板内容保留。");return false;}
+        if(original.length()>65536){notice.accept(I18n.t("一次粘贴最多 64 KiB","Paste at most 64 KiB at once"));return false;}
+        if(!accepting){notice.accept(I18n.t("连接未就绪，粘贴未发送；剪贴板内容保留。","Connection is not ready; paste not sent. The clipboard is unchanged."));return false;}
         String text=MultilineInput.normalize(original);while(text.endsWith("\n"))text=text.substring(0,text.length()-1);
         if(text.isEmpty())return true;
-        if(MultilineInput.unsupportedControls(text)){notice.accept("粘贴内容包含控制字符，请检查后重试。");return false;}
+        if(MultilineInput.unsupportedControls(text)){notice.accept(I18n.t("粘贴内容包含控制字符，请检查后重试。","Pasted text contains control characters; check it and try again."));return false;}
         Terminal target=terminal;KeyInput targetInput=input;
         text=MultilineInput.prepare(this,text);if(text==null)return false;
-        if(terminal!=target||input!=targetInput){notice.accept("连接已变化，请重新粘贴。");return false;}
+        if(terminal!=target||input!=targetInput){notice.accept(I18n.t("连接已变化，请重新粘贴。","Connection changed; paste again."));return false;}
         boolean sent=sendKeys(pasteSequence(text),"clipboard-paste");if(sent)SwingUtilities.invokeLater(this::requestFocusInWindow);return sent;
     }
     String pasteSequence(String text){return localEditing||bracketedPaste?"\u001b[200~"+text+"\u001b[201~":text;}
@@ -606,7 +618,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
                 for(int i=0;i<composition.length();){int cp=composition.codePointAt(i),span=Math.max(1,org.jline.utils.WCWidth.wcwidth(cp));if(col+span>columns){col=0;row++;}g.setColor(new Color(0x23334b));g.fillRect(col*cellWidth,row*cellHeight,span*cellWidth,cellHeight);g.setColor(new Color(0xb5f0dc));g.drawString(new String(Character.toChars(cp)),col*cellWidth,row*cellHeight+ascent);g.drawLine(col*cellWidth,(row+1)*cellHeight-2,(col+span)*cellWidth-1,(row+1)*cellHeight-2);col+=span;i+=Character.charCount(cp);}
             }
             if(frame.cursorVisible()&&hasFocus()&&(cursorOn||!composition.isEmpty())){Point caret=composition.isEmpty()?new Point(frame.cursorColumn(),frame.cursorRow()):compositionCell();Rectangle cursor=cursorBounds(caret.x,caret.y,cellWidth,cellHeight,ascent,cursorCapHeight);g.setColor(new Color(0xb5d8d0));g.fillRect(cursor.x,cursor.y,cursor.width,cursor.height);}
-            if(!followLive){DesktopFonts.textHints(g);g.setColor(new Color(0x23334b));g.fillRect(Math.max(0,getWidth()-250),4,246,24);g.setColor(new Color(0xcbd5e1));g.setFont(DesktopFonts.ui().deriveFont(11f));g.drawString("历史视图 · Ctrl+End 回到最新",Math.max(4,getWidth()-240),21);}
+            if(!followLive){DesktopFonts.textHints(g);g.setColor(new Color(0x23334b));g.fillRect(Math.max(0,getWidth()-250),4,246,24);g.setColor(new Color(0xcbd5e1));g.setFont(DesktopFonts.ui().deriveFont(11f));g.drawString(I18n.t("历史视图 · Ctrl+End 回到最新","History view · Ctrl+End for latest"),Math.max(4,getWidth()-240),21);}
         }finally{g.dispose();}
     }
     String displayedText(){long count=history==null?0:history.count();synchronized(screen){StringBuilder text=new StringBuilder();for(int r=0;r<screen.rows();r++){StringBuilder row=new StringBuilder();for(int c=0;c<screen.cols();c++){int cp=visibleChar(r,c,count);if(cp>=0)row.appendCodePoint(cp);}text.append(row.toString().stripTrailing()).append('\n');}return text.toString();}}

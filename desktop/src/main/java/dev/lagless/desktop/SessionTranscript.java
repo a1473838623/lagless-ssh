@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import dev.lagless.ScreenModel;
 import dev.lagless.AnsiUtil;
 import java.util.function.BooleanSupplier;
@@ -56,13 +57,13 @@ final class SessionTranscript implements AutoCloseable {
         if(full==enabled)return;
         // A display preference must not finalize a still-growing logical line.
         projectPending(true);if(projected())capture.changedRows(screen);flush();full=enabled;
-        journal.append("\n[记录模式："+(full?"保存完整原始远端输出":"仅保存可读输出，省略原始全屏控制流")+"]\n");
+        journal.append(I18n.t("\n[记录模式：","\n[Recording mode: ")+(full?I18n.t("保存完整原始远端输出","save full raw remote output"):I18n.t("仅保存可读输出，省略原始全屏控制流","save readable output only; raw full-screen control stream omitted"))+"]\n");
     }
     synchronized void recordSubmittedInput(String line){
         if(line==null||line.isBlank())return;
         projectPending(true);flush();
         String printable=AnsiUtil.strip(line).replace('\r','\n').replaceAll("[\\p{Cntrl}&&[^\\n\\t]]","?");
-        journal.append("\n[本地输入 · 已提交]\n"+printable+"\n[/本地输入]\n");
+        journal.append(I18n.t("\n[本地输入 · 已提交]\n","\n[local input · submitted]\n")+printable+I18n.t("\n[/本地输入]\n","\n[/local input]\n"));
     }
     synchronized void append(String text,int columns,int rows){
         if(projectionFailure!=null)throw projectionFailure;

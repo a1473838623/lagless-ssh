@@ -123,7 +123,7 @@ public final class TerminalSession {
         synchronized (outLock) {
             if (passThrough == enabled) return false;
             if (enabled && localEcho != null && localEcho.hasBufferedInput())
-                throw new IllegalStateException("终端仍有本地输入或待发送内容，请先发送/清空并等候远端接收，再启用透传。");
+                throw new IllegalStateException(I18n.t("终端仍有本地输入或待发送内容，请先发送/清空并等候远端接收，再启用透传。","The terminal still has local input or pending text; send or clear it and wait for the remote side before enabling pass-through."));
             passThrough = enabled;
             if (enabled) promptReady = false;
             if (localEcho != null) {
@@ -412,7 +412,7 @@ public final class TerminalSession {
         String repaint = editRepaint.toString();
         editRepaint.setLength(0);
         if (repaint.indexOf('\n') < 0 && monitor.currentLinePrompt().equals(editPrompt)) {
-            audit("远端原位重绘当前提示符；本地行编辑器未增加历史行；SSH 输入未改变");
+            audit(I18n.t("远端原位重绘当前提示符；本地行编辑器未增加历史行；SSH 输入未改变","Remote redrew the current prompt in place; no history line added to the local line editor; SSH input unchanged"));
             return;
         }
         lineReader.printAbove(repaint);
@@ -549,7 +549,7 @@ public final class TerminalSession {
                 localEcho.resize(s.getColumns(), s.getRows());
             }
             conn.resize(s.getColumns(), s.getRows());
-            audit("终端尺寸变更；列=" + s.getColumns() + "；行=" + s.getRows() + "；仅通知远端 PTY，无 SSH 回车");
+            audit(I18n.t("终端尺寸变更；列=","Terminal resized; cols=") + s.getColumns() + I18n.t("；行=","; rows=") + s.getRows() + I18n.t("；仅通知远端 PTY，无 SSH 回车","; remote PTY notified only, no SSH Enter"));
         }
     }
 
@@ -867,7 +867,7 @@ public final class TerminalSession {
         if (s.isEmpty()) {
             return;
         }
-        if(s.indexOf('\r')>=0||s.indexOf('\n')>=0)audit("SSH 写入；来源="+origin+"；字符数="+s.length()+"；CR="+s.chars().filter(c->c=='\r').count()+"；LF="+s.chars().filter(c->c=='\n').count()+"；仅换行="+s.chars().allMatch(c->c=='\r'||c=='\n'));
+        if(s.indexOf('\r')>=0||s.indexOf('\n')>=0)audit(I18n.t("SSH 写入；来源=","SSH write; source=")+origin+I18n.t("；字符数=","; chars=")+s.length()+I18n.t("；CR=","; CR=")+s.chars().filter(c->c=='\r').count()+I18n.t("；LF=","; LF=")+s.chars().filter(c->c=='\n').count()+I18n.t("；仅换行=","; LF only=")+s.chars().allMatch(c->c=='\r'||c=='\n'));
         synchronized (toRemote) {
             toRemote.write(s.getBytes(StandardCharsets.UTF_8));
             toRemote.flush();

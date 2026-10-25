@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import java.io.*;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -24,7 +25,7 @@ final class LocalCommandJournal implements AutoCloseable {
     }
     Pending prepare(Profile profile,String session,String command,boolean interactive){
         if(failure!=null)throw failure;
-        String entry=Instant.now()+" [本地命令] ["+safe(profile.name())+" · "+safe(profile.user())+"@"+safe(profile.host())+":"+profile.port()+" · "+safe(session)+"] "+(interactive?"交互发送":"本地编辑")+" · 已提交 · "+safe(command)+"\n";
+        String entry=Instant.now()+I18n.t(" [本地命令] ["," [local command] [")+safe(profile.name())+" · "+safe(profile.user())+"@"+safe(profile.host())+":"+profile.port()+" · "+safe(session)+"] "+(interactive?I18n.t("交互发送","interactive send"):I18n.t("本地编辑","local edit"))+I18n.t(" · 已提交 · "," · submitted · ")+safe(command)+"\n";
         Pending pending=new Pending(new CompletableFuture<>());
         writer.execute(()->{if(pending.accepted().join())try{journal.append(entry);}catch(RuntimeException e){failure=e;}});return pending;
     }

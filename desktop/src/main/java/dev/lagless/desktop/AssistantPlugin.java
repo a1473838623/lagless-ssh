@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import dev.lagless.Json;
 import java.net.URI;
 import java.net.http.*;
@@ -14,12 +15,12 @@ public final class AssistantPlugin implements LaglessPlugin {
     public record Attachment(String name,String mime,byte[] bytes,String text) { }
     private final java.nio.file.Path home;
     public AssistantPlugin(java.nio.file.Path home) { this.home = home; }
-    @Override public String name() { return "AI助手"; }
+    @Override public String name() { return I18n.t("AI助手","AI assistant"); }
     @Override public String assist(String action, String text, String context) throws Exception {
         AssistantSettings settings=AssistantSettings.load(home);AssistantSettings.Service current=settings.current();
-        if(current==null)throw new IllegalStateException("请先在「AI 设置」添加服务配置");
-        if(current.models().isEmpty())throw new IllegalStateException("请先在 AI 设置中为当前服务添加模型");
-        return assistFor(current.id(),current.models().getFirst(),action,text,context,"自动检测","简体中文");
+        if(current==null)throw new IllegalStateException(I18n.t("请先在「AI 设置」添加服务配置","Add a service in AI settings first"));
+        if(current.models().isEmpty())throw new IllegalStateException(I18n.t("请先在 AI 设置中为当前服务添加模型","Add a model for the current service in AI settings first"));
+        return assistFor(current.id(),current.models().getFirst(),action,text,context,I18n.t("自动检测","Auto detect"),I18n.t("简体中文","English"));
     }
     String assistFor(String serviceId,String model,String action,String text,String context,String source,String target) throws Exception {
         StringBuilder result=new StringBuilder();
@@ -28,11 +29,11 @@ public final class AssistantPlugin implements LaglessPlugin {
     }
     void assistStreamFor(String serviceId,String model,String action,String text,String context,String source,String target,List<Attachment> attachments,Consumer<String> onDelta) throws Exception {
         AssistantSettings settings=AssistantSettings.load(home);AssistantSettings.Service service=settings.byId(serviceId);
-        if(service==null||!service.models().contains(model))throw new IllegalStateException("所选 AI 配置或模型已被删除");
+        if(service==null||!service.models().contains(model))throw new IllegalStateException(I18n.t("所选 AI 配置或模型已被删除","The selected AI configuration or model was deleted"));
         AssistantSettings.validate(service);
         URI endpoint=URI.create(AssistantSettings.normalizeEndpoint(service.endpoint()));
         String task=settings.prompt(action,source,target);
-        if(text.length()>1_000_000||context.length()>1_000_000)throw new IOException("请求或上下文超过 1,000,000 个字符；请缩小终端输出范围或移除部分附件。");
+        if(text.length()>1_000_000||context.length()>1_000_000)throw new IOException(I18n.t("请求或上下文超过 1,000,000 个字符；请缩小终端输出范围或移除部分附件。","Request or context exceeds 1,000,000 characters; narrow the terminal output range or remove some attachments."));
         StringBuilder userText=new StringBuilder("Context:\n").append(context).append("\n\nRequest:\n").append(text);
         List<Object> multimodal=new ArrayList<>();
         for(Attachment attachment:attachments){
@@ -51,24 +52,24 @@ public final class AssistantPlugin implements LaglessPlugin {
         var response = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
                 .send(request.POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofInputStream());
         try (var in = response.body()) {
-            if (response.statusCode() != 200) {String detail=new String(in.readNBytes(4096),StandardCharsets.UTF_8).replaceAll("\\s+"," ").trim();throw new IOException("AI 服务返回 HTTP "+response.statusCode()+
-                    (response.statusCode()==404?"；实际请求地址："+endpoint+"。请确认服务支持 OpenAI 兼容的 POST chat/completions 路由":"")+(detail.isBlank()?"":"；"+detail));}
+            if (response.statusCode() != 200) {String detail=new String(in.readNBytes(4096),StandardCharsets.UTF_8).replaceAll("\\s+"," ").trim();throw new IOException(I18n.t("AI 服务返回 HTTP ","AI service returned HTTP ")+response.statusCode()+
+                    (response.statusCode()==404?I18n.t("；实际请求地址：","; request URL: ")+endpoint+I18n.t("。请确认服务支持 OpenAI 兼容的 POST chat/completions 路由",". Make sure the service supports the OpenAI-compatible POST chat/completions route"):"")+(detail.isBlank()?"":I18n.t("；","; ")+detail));}
             String contentType=response.headers().firstValue("Content-Type").orElse("").toLowerCase(Locale.ROOT);
             if(contentType.contains("text/event-stream"))readEvents(in,onDelta);
             else readJson(in,onDelta);
         }
     }
     private static void readJson(InputStream in,Consumer<String> onDelta)throws IOException{
-        byte[] bytes=in.readNBytes(8*1024*1024+1);if(bytes.length>8*1024*1024)throw new IOException("AI 响应超过 8 MiB");
+        byte[] bytes=in.readNBytes(8*1024*1024+1);if(bytes.length>8*1024*1024)throw new IOException(I18n.t("AI 响应超过 8 MiB","AI response exceeds 8 MiB"));
         String text=Json.string(Json.parse(new String(bytes,StandardCharsets.UTF_8)),"choices",0,"message","content");
-        if(text==null)throw new IOException("AI 响应中缺少文本");if(!text.isEmpty())onDelta.accept(text);
+        if(text==null)throw new IOException(I18n.t("AI 响应中缺少文本","AI response has no text"));if(!text.isEmpty())onDelta.accept(text);
     }
     private static void readEvents(InputStream in,Consumer<String> onDelta)throws IOException{
         try(BufferedReader reader=new BufferedReader(new InputStreamReader(in,StandardCharsets.UTF_8))){String line;while((line=reader.readLine())!=null){
             if(!line.startsWith("data:"))continue;String data=line.substring(5).trim();if(data.equals("[DONE]"))return;if(data.isEmpty())continue;
-            Object event;try{event=Json.parse(data);}catch(RuntimeException error){throw new IOException("AI 流式响应格式无效",error);}
+            Object event;try{event=Json.parse(data);}catch(RuntimeException error){throw new IOException(I18n.t("AI 流式响应格式无效","Invalid AI streaming response"),error);}
             String delta=Json.string(event,"choices",0,"delta","content");if(delta!=null&&!delta.isEmpty())onDelta.accept(delta);
-            String failure=Json.string(event,"error","message");if(failure!=null)throw new IOException("AI 流式响应错误："+failure);
+            String failure=Json.string(event,"error","message");if(failure!=null)throw new IOException(I18n.t("AI 流式响应错误：","AI streaming error: ")+failure);
         }}
     }
     @Override public String toString() { return name(); }

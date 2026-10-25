@@ -1,5 +1,6 @@
 package dev.lagless.desktop;
 
+import dev.lagless.I18n;
 import java.io.*;
 import java.time.Instant;
 import java.nio.file.*;
@@ -15,7 +16,7 @@ final class ApplicationJournal implements AutoCloseable {
     private int repeatedErrors;
     ApplicationJournal(Path home)throws IOException{
         this.home=home;journal=new SessionJournal(home.resolve("desktop/events"),"application",true);
-        record(null,"程序启动 · Lagless "+DesktopRuntime.version()+" · PID "+ProcessHandle.current().pid()+" · "+DesktopRuntime.home());
+        record(null,I18n.t("程序启动 · Lagless ","Started · Lagless ")+DesktopRuntime.version()+" · PID "+ProcessHandle.current().pid()+" · "+DesktopRuntime.home());
     }
     void installErrorHandler(){
         previousHandler=Thread.getDefaultUncaughtExceptionHandler();
@@ -28,11 +29,11 @@ final class ApplicationJournal implements AutoCloseable {
         flushRepeatedErrors();previousError=key;errorWritten=now;
         error(thread.getName(),error);
     }
-    private void flushRepeatedErrors(){if(repeatedErrors>0){record(null,"上一条异常另重复 "+repeatedErrors+" 次");repeatedErrors=0;}}
+    private void flushRepeatedErrors(){if(repeatedErrors>0){record(null,I18n.t("上一条异常另重复 ","Previous error repeated ")+repeatedErrors+I18n.t(" 次"," time(s)"));repeatedErrors=0;}}
     synchronized void error(String source,Throwable error){
         StringWriter text=new StringWriter();error.printStackTrace(new PrintWriter(text));
-        String entry=Instant.now()+" [错误] ["+source.replace('\r',' ').replace('\n',' ')+"] "+text+"\n";
-        try{if(closed)throw new IOException("软件日志已经关闭");journal.append(entry);}
+        String entry=Instant.now()+I18n.t(" [错误] ["," [error] [")+source.replace('\r',' ').replace('\n',' ')+"] "+text+"\n";
+        try{if(closed)throw new IOException(I18n.t("软件日志已经关闭","Application log is already closed"));journal.append(entry);}
         catch(IOException|UncheckedIOException failure){
             // Emergency fallback only when the run journal itself is unavailable.
             try{Path fallback=home.resolve("desktop/native-errors.log");Files.createDirectories(fallback.getParent());Files.writeString(fallback,entry,StandardOpenOption.CREATE,StandardOpenOption.APPEND);}
@@ -40,10 +41,10 @@ final class ApplicationJournal implements AutoCloseable {
         }
     }
     SessionJournal backing(){return journal;}
-    void operation(String message){record("本地操作",null,message);}
-    void operation(String session,String message){record("本地操作",session,message);}
+    void operation(String message){record(I18n.t("本地操作","Local action"),null,message);}
+    void operation(String session,String message){record(I18n.t("本地操作","Local action"),session,message);}
     synchronized void record(String session,String message){
-        record(session==null?"软件":"连接",session,message);
+        record(session==null?I18n.t("软件","Application"):I18n.t("连接","Connect"),session,message);
     }
     private synchronized void record(String prefix,String session,String message){
         if(closed)return;
