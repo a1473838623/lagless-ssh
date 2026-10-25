@@ -33,21 +33,34 @@ final class BackgroundSessions {
     /** Server folder for the recordings, relative to the login directory. */
     static final String FOLDER=".lagless/background";
     static final String CHECK="command -v tmux >/dev/null 2>&1 && echo \"tmux=$(tmux -V 2>/dev/null)\"; "+
-            "for m in apt-get dnf yum zypper pacman apk brew; do if command -v $m >/dev/null 2>&1; then echo pm=$m; break; fi; done; echo uid=$(id -u)";
+            "for m in apt-get dnf yum zypper pacman apk brew; do if command -v $m >/dev/null 2>&1; then echo pm=$m; break; fi; done; echo uid=$(id -u); "+
+            // An installed tmux can still fail to start, e.g. when the server is out of memory. Start a
+            // throwaway session on a private socket, see that it stays up, and end it again.
+            "if command -v tmux >/dev/null 2>&1; then p=lagless-probe-$$; e=$(tmux -L $p new-session -d -s probe 2>&1); sleep 0.5; "+
+            "if tmux -L $p has-session -t probe 2>/dev/null; then echo probe=ok; else echo \"probe=failed ${e:-the tmux server exited right after starting}\" | head -n 1; fi; "+
+            "tmux -L $p kill-server 2>/dev/null; rm -f \"${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)/$p\"; fi; "+
+            "awk '/^MemAvailable:/{print \"memavail=\"$2} /^SwapTotal:/{print \"swap=\"$2}' /proc/meminfo 2>/dev/null";
     private static final long IMPORT_LIMIT=32L*1024*1024;
 
-    record Check(boolean tmux,String version,String packageManager,boolean root){}
+    /** {@code starts} is false when tmux is installed but a test session would not stay up; memory figures are in KiB, -1 when unknown. */
+    record Check(boolean tmux,String version,String packageManager,boolean root,boolean starts,String failure,long memAvailable,long swap){}
     record Session(String name,long created,boolean attached,int windows){}
     record Prepared(String pipe,List<String> recordings){}
 
     static Check parseCheck(String output){
-        String version=null,pm=null;boolean root=false;
+        String version=null,pm=null,probe=null;boolean root=false;long mem=-1,swap=-1;
         for(String line:output.split("\\R")){
             if(line.startsWith("tmux="))version=line.substring(5).trim();
             else if(line.startsWith("pm="))pm=line.substring(3).trim();
             else if(line.startsWith("uid="))root=line.substring(4).trim().equals("0");
+            else if(line.startsWith("probe="))probe=line.substring(6).trim();
+            else if(line.startsWith("memavail="))mem=number(line.substring(9));
+            else if(line.startsWith("swap="))swap=number(line.substring(5));
         }
-        return new Check(version!=null,version==null?"":version,pm==null?"":pm,root);
+        // No probe line (an older shell or a timeout) is not evidence of failure.
+        boolean starts=probe==null||probe.equals("ok");
+        String failure=starts?"":probe.replaceFirst("^failed\\s*","");
+        return new Check(version!=null,version==null?"":version,pm==null?"":pm,root,starts,failure,mem,swap);
     }
     /** The usual install command for the server's package manager, or "" when none was found. */
     static String installCommand(Check check){
@@ -168,16 +181,30 @@ final class BackgroundSessions {
         if(!allowCheck(pane))return;
         pane.app.background(pane,()->{String out=connection.exec(CHECK,15_000);if(out==null)throw new IOException(I18n.t("无法在服务器上执行检查命令","Cannot run the check command on the server"));return parseCheck(out);},check->{
             if(!check.tmux()){offerInstall(pane,check);return;}
+            if(!check.starts()){explainFailedStart(pane,check);return;}
             pane.app.background(pane,()->Objects.requireNonNullElse(connection.exec(listCommand(),15_000),""),out->manage(pane,connection,check,parseList(out)));
         });
     }
-    private static String allowKey(SessionPane pane){return "background-check-"+pane.profile.id();}
+    // The check now starts a throwaway tmux session, so it is asked for again rather than reusing "read-only" consent.
+    private static String allowKey(SessionPane pane){return "background-check2-"+pane.profile.id();}
+    /** tmux is installed but cannot keep a session up: say why instead of failing on every attach. */
+    private static void explainFailedStart(SessionPane pane,Check check){
+        pane.app.events.operation(pane.profile.name(),I18n.t("服务器上的 tmux 无法启动会话：","tmux on the server cannot start a session: ")+check.failure()+" · memavail="+check.memAvailable()+"KiB swap="+check.swap()+"KiB");
+        StringBuilder text=new StringBuilder(I18n.t("服务器上已安装 ","tmux ")).append(check.version()).append(I18n.t("，但测试会话无法保持运行：\n",", is installed on the server, but a test session would not stay up:\n")).append(check.failure());
+        boolean lowMemory=check.memAvailable()>=0&&check.memAvailable()<256*1024;
+        if(check.swap()==0||lowMemory){
+            text.append(I18n.t("\n\n服务器可用内存约 ","\n\nThe server has about ")).append(check.memAvailable()<0?"?":check.memAvailable()/1024).append(I18n.t(" MB，交换空间 "," MB of memory available and ")).append(check.swap()<0?"?":check.swap()/1024).append(I18n.t(" MB。内存不足时，新进程会启动失败或被系统结束。可以添加交换空间（以 root 运行）：\n"," MB of swap. When memory runs out, new processes fail to start or are killed. To add swap (as root):\n"))
+                .append("fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile\necho '/swapfile none swap sw 0 0' >> /etc/fstab");
+        }else text.append(I18n.t("\n\n可在终端运行 tmux new -s test 查看详细原因；也可用 tmux -f /dev/null new -s test 排除 ~/.tmux.conf 的影响。","\n\nRun tmux new -s test in the terminal to see more; tmux -f /dev/null new -s test rules out ~/.tmux.conf."));
+        JTextArea area=DesktopApp.textArea();area.setText(text.toString());area.setEditable(false);area.setLineWrap(true);area.setWrapStyleWord(true);area.setColumns(60);area.setRows(9);
+        JOptionPane.showMessageDialog(pane,new JScrollPane(area),I18n.t("tmux 无法在服务器上启动","tmux cannot start on the server"),JOptionPane.WARNING_MESSAGE);
+    }
     static boolean checkAllowed(SessionPane pane){return Boolean.parseBoolean(pane.app.preferences.get(allowKey(pane),"false"));}
     private static boolean allowCheck(SessionPane pane){
         if(checkAllowed(pane))return true;
-        JTextArea command=DesktopApp.textArea();command.setText(CHECK);command.setEditable(false);command.setLineWrap(true);command.setRows(4);command.setColumns(56);
+        JTextArea command=DesktopApp.textArea();command.setText(CHECK);command.setEditable(false);command.setLineWrap(true);command.setRows(7);command.setColumns(64);
         JCheckBox always=new JCheckBox(I18n.t("以后对此服务器不再询问","Don't ask again for this server"));
-        Object[] content={I18n.t("后台会话由服务器上的 tmux 保持运行。Lagless 将在 ","Background sessions are kept running by tmux on the server. Lagless will run this read-only check on ")+pane.profile.name()+" ("+pane.profile.host()+I18n.t(") 上运行以下只读检查，查看是否已安装 tmux 以及可用的软件包管理器：",") to see whether tmux is installed and which package manager is available:"),new JScrollPane(command),always};
+        Object[] content={I18n.t("后台会话由服务器上的 tmux 保持运行。Lagless 将在 ","Background sessions are kept running by tmux on the server. Lagless will run this check on ")+pane.profile.name()+" ("+pane.profile.host()+I18n.t(") 上运行以下检查：查看是否已安装 tmux、可用的软件包管理器和内存，并在独立的套接字上启动一个临时 tmux 会话、确认其能保持运行后立即结束。不会修改其他内容：",") to see whether tmux is installed, which package manager is available and how much memory is free. It also starts a throwaway tmux session on a private socket, confirms it stays up, and ends it at once. Nothing else is changed:"),new JScrollPane(command),always};
         int answer=JOptionPane.showConfirmDialog(pane,content,I18n.t("允许检查服务器？","Allow the server check?"),JOptionPane.OK_CANCEL_OPTION,JOptionPane.QUESTION_MESSAGE);
         if(answer!=JOptionPane.OK_OPTION)return false;
         if(always.isSelected())pane.app.preferences.set(allowKey(pane),"true");

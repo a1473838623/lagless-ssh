@@ -20,6 +20,29 @@ class BackgroundSessionsTest {
         assertEquals("",BackgroundSessions.installCommand(BackgroundSessions.parseCheck("uid=1000\n")));
         BackgroundSessions.Check present=BackgroundSessions.parseCheck("tmux=tmux 3.4\npm=apt-get\nuid=1000\n");assertTrue(present.tmux());assertEquals("tmux 3.4",present.version());
     }
+    @Test void aTmuxThatCannotStartASessionIsReportedWithMemory(){
+        BackgroundSessions.Check broken=BackgroundSessions.parseCheck("tmux=tmux 3.4\npm=apt-get\nuid=0\nprobe=failed server exited unexpectedly\nmemavail=81234\nswap=0\n");
+        assertTrue(broken.tmux());assertFalse(broken.starts());assertEquals("server exited unexpectedly",broken.failure());
+        assertEquals(81234,broken.memAvailable());assertEquals(0,broken.swap());
+        BackgroundSessions.Check healthy=BackgroundSessions.parseCheck("tmux=tmux 3.4\nuid=1000\nprobe=ok\nmemavail=900000\nswap=2097148\n");
+        assertTrue(healthy.starts());assertEquals("",healthy.failure());
+        assertTrue(BackgroundSessions.parseCheck("tmux=tmux 3.4\nuid=1000\n").starts(),"no probe line is not a failure");
+    }
+    @Test void theServerCheckProbesARealTmuxSession()throws Exception{
+        Assumptions.assumeTrue(run("command -v tmux").exitCode()==0,"tmux not installed");
+        BackgroundSessions.Check check=BackgroundSessions.parseCheck(run(BackgroundSessions.CHECK).out());
+        assertTrue(check.tmux());assertTrue(check.starts(),check.failure());assertTrue(check.memAvailable()>0);
+        assertEquals("",run("ls \"$TMUX_TMPDIR\"/tmux-$(id -u) 2>/dev/null | grep lagless-probe").out().strip(),"the probe server is gone afterwards");
+    }
+    @Test void theServerCheckNoticesWhenTmuxCannotStart()throws Exception{
+        Assumptions.assumeTrue(run("command -v tmux").exitCode()==0,"tmux not installed");
+        // A tmux whose server dies on start, as on a server out of memory.
+        Path bin=Files.createDirectories(dir.resolve("bin"));String real=run("command -v tmux").out().strip();
+        Files.writeString(bin.resolve("tmux"),"#!/bin/sh\ncase \" $* \" in *\" new-session \"*) echo 'server exited unexpectedly'; exit 1;; esac\nexec "+real+" \"$@\"\n");
+        bin.resolve("tmux").toFile().setExecutable(true);
+        BackgroundSessions.Check check=BackgroundSessions.parseCheck(run("export PATH=\""+bin+":$PATH\"; "+BackgroundSessions.CHECK).out());
+        assertTrue(check.tmux());assertFalse(check.starts());assertEquals("server exited unexpectedly",check.failure());
+    }
     @Test void onlySessionsLaglessCreatedAreListedNewestFirst(){
         List<BackgroundSessions.Session> sessions=BackgroundSessions.parseList("work|1|100|0|1\nmine||50|1|2\nother||300|0|1\nlater|1|200|0|1\ndir|mine\n");
         assertEquals(List.of("later","work","mine"),sessions.stream().map(BackgroundSessions.Session::name).toList());
