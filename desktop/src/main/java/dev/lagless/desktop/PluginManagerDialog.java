@@ -44,7 +44,7 @@ final class PluginManagerDialog {
         JPanel root=new JPanel(new BorderLayout(8,8));root.setBorder(new EmptyBorder(12,12,12,12));
         dialog.setIconImage(DesktopApp.appIcon());
         list.setCellRenderer((view,value,index,selected,focus)->{JLabel label=new JLabel(value.path()==null?"● "+value.label():(app.plugins.enabled(value.path())?"● ":"○ ")+value.label());
-            label.setOpaque(true);label.setBackground(selected?new Color(0xd8eee8):view.getBackground());label.setForeground(selected?DesktopApp.INK:view.getForeground());return label;});
+            label.setOpaque(true);label.setBackground(selected?Theme.TINT:view.getBackground());label.setForeground(selected?DesktopApp.INK:view.getForeground());return label;});
         JPanel actions=new JPanel(new GridLayout(0,2,6,6));
         actions.add(DesktopApp.button(I18n.t("安装 / 导入","Install / import"),this::install));actions.add(DesktopApp.button(I18n.t("导出","Export"),this::export));
         actions.add(DesktopApp.button(I18n.t("启用 / 禁用","Enable / disable"),this::toggle));actions.add(DesktopApp.button(I18n.t("配置","Configure"),this::configure));

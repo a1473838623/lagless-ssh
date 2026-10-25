@@ -29,10 +29,10 @@ final class ConnectionLibrary {
         popupAction(menu,I18n.t("导出账号","Export"),()->app.exportAccounts(dialog,list.getSelectedValue()));
         popupAction(menu,I18n.t("读取终端配置","Read terminal config"),()->app.importTerminal(dialog));
         JButton management=new JButton(I18n.t("管理连接","Manage connections"),UiIcons.CHEVRON_DOWN);management.setHorizontalTextPosition(SwingConstants.LEFT);management.setIconTextGap(10);management.setFocusPainted(false);management.setMargin(new Insets(8,14,8,14));
-        management.setBackground(DesktopApp.ACCENT);management.setForeground(Color.WHITE);management.setOpaque(true);
+        management.setBackground(DesktopApp.ACCENT);management.setForeground(Theme.ON_ACCENT);management.setOpaque(true);
         management.addActionListener(e->menu.show(management,0,management.getHeight()));
         header.add(management,BorderLayout.WEST);
-        list.setFixedCellHeight(60);list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);list.setCellRenderer((view,p,index,selected,focus)->{JPanel cell=new JPanel(new GridLayout(2,1));cell.setBorder(BorderFactory.createEmptyBorder(8,12,8,12));cell.setBackground(selected?new Color(0xe0eee9):Color.WHITE);JLabel name=new JLabel(p.name());name.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,14));cell.add(name);JLabel host=new JLabel(p.user()+"@"+p.host()+":"+p.port());host.setForeground(DesktopApp.MUTED);cell.add(host);return cell;});
+        list.setFixedCellHeight(60);list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);list.setCellRenderer((view,p,index,selected,focus)->{JPanel cell=new JPanel(new GridLayout(2,1));cell.setBorder(BorderFactory.createEmptyBorder(8,12,8,12));cell.setBackground(selected?Theme.TINT:Theme.SURFACE);JLabel name=new JLabel(p.name());name.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,14));cell.add(name);JLabel host=new JLabel(p.user()+"@"+p.host()+":"+p.port());host.setForeground(DesktopApp.MUTED);cell.add(host);return cell;});
         Runnable connect=()->{Profile p=list.getSelectedValue();if(p!=null){dialog.dispose();workspace.open(p);}};
         list.addMouseListener(new MouseAdapter(){
             @Override public void mousePressed(MouseEvent e){

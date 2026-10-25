@@ -80,9 +80,9 @@ public final class SessionPane extends JPanel implements AutoCloseable {
         view.setAutoRemoteWheel(Boolean.parseBoolean(app.preferences.get("wheel-auto-interactive","true")));
         view.setPageKeysForRemoteWheel(Boolean.parseBoolean(app.preferences.get("wheel-page-keys","false")));
         setBorder(new EmptyBorder(8,8,8,8));
-        JPanel top=new JPanel(new BorderLayout());status.setForeground(DesktopApp.ACCENT);top.add(status,BorderLayout.WEST);
+        JPanel top=new JPanel(new BorderLayout());top.setBorder(new EmptyBorder(0,2,2,0));status.setForeground(Theme.ACCENT_HOVER);status.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,12.5f));top.add(status,BorderLayout.WEST);
         JLabel target=new JLabel(profile.user()+"@"+profile.host()+(background==null?"":I18n.t(" · 后台会话 "," · background session ")+background));target.setForeground(DesktopApp.MUTED);
-        JButton backgroundButton=new JButton(background==null?I18n.t("后台会话…","Background sessions…"):I18n.t("其他后台会话…","Other background sessions…"));backgroundButton.setName("background-sessions-button");backgroundButton.setFocusable(false);
+        JButton backgroundButton=new JButton(background==null?I18n.t("后台会话…","Background sessions…"):I18n.t("其他后台会话…","Other background sessions…"));backgroundButton.setName("background-sessions-button");backgroundButton.setFocusable(false);backgroundButton.putClientProperty("JButton.buttonType","roundRect");
         backgroundButton.setToolTipText(I18n.t("在服务器上运行可在关闭 Lagless 后继续的 shell，并在重新打开后重新连接","Run a shell on the server that keeps going after Lagless closes, and reconnect to it later"));
         backgroundButton.addActionListener(e->BackgroundSessions.show(this));
         JPanel topRight=new JPanel(new FlowLayout(FlowLayout.RIGHT,10,0));topRight.setOpaque(false);topRight.add(target);topRight.add(backgroundButton);top.add(topRight,BorderLayout.EAST);add(top,BorderLayout.NORTH);

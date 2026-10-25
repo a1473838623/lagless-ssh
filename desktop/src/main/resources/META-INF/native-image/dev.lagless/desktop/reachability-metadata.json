@@ -3,22 +3,137 @@
     {
       "type": "com.formdev.flatlaf.ui.FlatButtonBorder",
       "allDeclaredFields": true
+    },
+    {
+      "type": "com.formdev.flatlaf.FlatDarkLaf",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "glob": "com/formdev/flatlaf/FlatLaf.properties"
+    },
+    {
+      "glob": "com/formdev/flatlaf/FlatLightLaf.properties"
+    },
+    {
+      "glob": "com/formdev/flatlaf/FlatDarkLaf.properties"
     }
   ],
   "foreign": {
     "downcalls": [
-      { "returnType": "void*", "parameterTypes": ["jlong"] },
-      { "returnType": "void*", "parameterTypes": ["void*"] },
-      { "returnType": "void", "parameterTypes": ["void*"] },
-      { "returnType": "void", "parameterTypes": ["float", "void*", "void*", "void*", "int", "int", "int", "int", "int", "float", "float", "int", "int", "void*", "void*"] },
-      { "returnType": "void*", "parameterTypes": ["void*", "void*", "void*", "void*", "void*"] }
+      {
+        "returnType": "void*",
+        "parameterTypes": [
+          "jlong"
+        ]
+      },
+      {
+        "returnType": "void*",
+        "parameterTypes": [
+          "void*"
+        ]
+      },
+      {
+        "returnType": "void",
+        "parameterTypes": [
+          "void*"
+        ]
+      },
+      {
+        "returnType": "void",
+        "parameterTypes": [
+          "float",
+          "void*",
+          "void*",
+          "void*",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "float",
+          "float",
+          "int",
+          "int",
+          "void*",
+          "void*"
+        ]
+      },
+      {
+        "returnType": "void*",
+        "parameterTypes": [
+          "void*",
+          "void*",
+          "void*",
+          "void*",
+          "void*"
+        ]
+      }
     ],
     "upcalls": [
-      { "returnType": "int", "parameterTypes": ["void*", "void*", "int", "int", "void*", "void*"] },
-      { "returnType": "int", "parameterTypes": ["void*", "void*", "int", "void*", "void*"] },
-      { "returnType": "int", "parameterTypes": ["void*", "void*", "int", "void*"] },
-      { "returnType": "int", "parameterTypes": ["void*", "void*", "int", "int", "void*", "void*", "void*"] },
-      { "returnType": "void", "parameterTypes": ["int", "int", "int", "float", "float", "float", "int", "int", "void*", "void*"] }
+      {
+        "returnType": "int",
+        "parameterTypes": [
+          "void*",
+          "void*",
+          "int",
+          "int",
+          "void*",
+          "void*"
+        ]
+      },
+      {
+        "returnType": "int",
+        "parameterTypes": [
+          "void*",
+          "void*",
+          "int",
+          "void*",
+          "void*"
+        ]
+      },
+      {
+        "returnType": "int",
+        "parameterTypes": [
+          "void*",
+          "void*",
+          "int",
+          "void*"
+        ]
+      },
+      {
+        "returnType": "int",
+        "parameterTypes": [
+          "void*",
+          "void*",
+          "int",
+          "int",
+          "void*",
+          "void*",
+          "void*"
+        ]
+      },
+      {
+        "returnType": "void",
+        "parameterTypes": [
+          "int",
+          "int",
+          "int",
+          "float",
+          "float",
+          "float",
+          "int",
+          "int",
+          "void*",
+          "void*"
+        ]
+      }
     ]
   }
 }

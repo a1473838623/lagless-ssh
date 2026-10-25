@@ -15,7 +15,7 @@ final class BottomInputPane extends JPanel {
     final JLayeredPane editorSurface;
     final JComponent resizeHandle=new JComponent(){
         @Override protected void paintComponent(Graphics graphics){
-            graphics.setColor(new Color(0x6b8993));
+            graphics.setColor(Theme.FAINT);
             int x=getWidth()-5,y=getHeight()-5;
             for(int n=0;n<3;n++)graphics.drawLine(x-3-n*4,y,x,y-3-n*4);
         }

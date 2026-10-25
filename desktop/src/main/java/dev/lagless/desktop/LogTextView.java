@@ -35,7 +35,7 @@ final class LogTextView extends JPanel implements AutoCloseable {
         model.setFont(DesktopFonts.monospace(14));
         canvas=new NativeTextCanvas(this::frame,this::fallback);
         canvas.enableInputMethods(false);
-        canvas.setBackground(Color.WHITE);add(canvas);add(vertical,BorderLayout.EAST);add(horizontal,BorderLayout.SOUTH);
+        canvas.setBackground(Theme.SURFACE);add(canvas);add(vertical,BorderLayout.EAST);add(horizontal,BorderLayout.SOUTH);
         vertical.addAdjustmentListener(e->{if(!updating){if(vertical.getValue()<position)scrolledBack.run();position=vertical.getValue();canvas.repaint();scrollEdges((int)position,canvas.getHeight(),totalHeight());}});
         horizontal.addAdjustmentListener(e->{if(!updating)canvas.repaint();});
         canvas.addComponentListener(new ComponentAdapter(){public void componentResized(ComponentEvent e){columns=-1;layoutLines();}});
@@ -151,14 +151,14 @@ final class LogTextView extends JPanel implements AutoCloseable {
         // Layout is invalidated by document, wrap and size changes, never by paint.
         if(columns<0)layoutLines();
         int first=(int)(position/cellHeight),left=horizontal.getValue()/cellWidth,cols=Math.max(2,canvas.getWidth()/cellWidth+1),rows=Math.max(1,canvas.getHeight()/cellHeight+2);
-        int[] chars=new int[cols*rows],fg=new int[chars.length],bg=new int[chars.length];Arrays.fill(chars,' ');Arrays.fill(fg,0x202c3c);Arrays.fill(bg,0xffffff);
+        int[] chars=new int[cols*rows],fg=new int[chars.length],bg=new int[chars.length];Arrays.fill(chars,' ');int paper=Theme.SURFACE.getRGB()&0xffffff;Arrays.fill(fg,Theme.INK.getRGB()&0xffffff);Arrays.fill(bg,paper);
         int lo=Math.min(anchor,selectionEnd),hi=Math.max(anchor,selectionEnd);
         for(int r=0;r<rows&&first+r<lines.size();r++){
             Line line=lines.get(first+r);for(int c=0;c<cols&&left+c<line.characters().length;c++){
-                int p=r*cols+c;chars[p]=line.characters()[left+c];int source=line.offsets()[left+c];if(source>=lo&&source<hi)bg[p]=0xbfe8df;
+                int p=r*cols+c;chars[p]=line.characters()[left+c];int source=line.offsets()[left+c];if(source>=lo&&source<hi)bg[p]=Theme.SELECTION.getRGB()&0xffffff;
             }
         }
-        return new NativeGraphics.Frame(cols,rows,chars,fg,bg,cellWidth,cellHeight,ascent,(int)Math.round(position-first*cellHeight),-1,-1,false,model.getFont().getSize2D(),0xffffff);
+        return new NativeGraphics.Frame(cols,rows,chars,fg,bg,cellWidth,cellHeight,ascent,(int)Math.round(position-first*cellHeight),-1,-1,false,model.getFont().getSize2D(),paper);
     }
     @Override public void close(){if(canvas!=null)canvas.release();}
 }

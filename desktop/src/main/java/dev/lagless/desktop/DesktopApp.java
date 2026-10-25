@@ -16,8 +16,9 @@ import java.util.function.Consumer;
 /** Native Java desktop, sharing the CLI's latency-sensitive terminal implementation. */
 public final class DesktopApp implements AutoCloseable {
     static final String PROJECT_URL="https://github.com/a1473838623/lagless-ssh";
-    static final Color INK = new Color(0x0f172a), MUTED = new Color(0x64748b), ACCENT = new Color(0x0d9488), ACCENT_DARK = new Color(0x0f766e),
-            SURFACE = new Color(0xf6f8fb), LINE = new Color(0xe2e8f0), TINT = new Color(0xe6f6f3);
+    // Live theme tokens: they follow View ▸ Theme without rebuilding components.
+    static final Color INK = Theme.INK, MUTED = Theme.MUTED, ACCENT = Theme.ACCENT, ACCENT_DARK = Theme.ACCENT_HOVER,
+            SURFACE = Theme.CANVAS, LINE = Theme.LINE, TINT = Theme.TINT;
     final Path home;
     final ProfileStore store;
     final DefaultListModel<Profile> accounts = new DefaultListModel<>();
@@ -59,56 +60,20 @@ public final class DesktopApp implements AutoCloseable {
         catch(IOException error){throw new UncheckedIOException(I18n.t("无法创建软件运行日志","Cannot create the application log"),error);}
         if (GraphicsEnvironment.isHeadless()) { runLog.record(null,I18n.t("没有图形桌面，结束本次运行","No graphical desktop; exiting"));runLog.close();System.err.println("lagless gui requires a graphical desktop."); return; }
         SwingUtilities.invokeLater(() -> {
-            try { theme(); LanguageDialog.apply(home,true); new DesktopApp(home,true,runLog,true).newWindow(); }
+            try { theme(home); LanguageDialog.apply(home,true); new DesktopApp(home,true,runLog,true).newWindow(); }
             catch (Throwable e) { runLog.error(I18n.t("启动","Startup"),e);runLog.record(null,I18n.t("程序启动失败，结束本次运行","Startup failed; exiting"));runLog.close();JOptionPane.showMessageDialog(null,e.getMessage(),I18n.t("Lagless 启动失败","Lagless failed to start"),JOptionPane.ERROR_MESSAGE); }
         });
     }
-    static void theme() {
-        // Native display canvases are heavyweight windows. Menus/tooltips must
-        // also be heavyweight to stay above them, including on separate monitors.
-        JPopupMenu.setDefaultLightWeightPopupEnabled(false);
-        ToolTipManager.sharedInstance().setLightWeightPopupEnabled(false);
-        Font font=DesktopFonts.ui();
-        com.formdev.flatlaf.FlatLaf.setPreferredFontFamily(font.getFamily());
-        com.formdev.flatlaf.FlatLaf.setGlobalExtraDefaults(Map.of("@accentColor","#0d9488","@background","#f6f8fb"));
-        com.formdev.flatlaf.FlatLightLaf.setup();
-        // A menu needs one opaque popup window above the native terminal.
-        // Avoid a second translucent shadow window and its separate peer.
-        UIManager.put("Popup.dropShadowPainted",false);
-        UIManager.put("defaultFont",font);
-        UIManager.put("Component.arc",10);UIManager.put("Button.arc",10);UIManager.put("TextComponent.arc",10);UIManager.put("CheckBox.arc",6);UIManager.put("ProgressBar.arc",999);
-        UIManager.put("Component.focusWidth",1);UIManager.put("Component.innerFocusWidth",0);UIManager.put("Component.focusColor",new Color(0x99e0d4));UIManager.put("Component.borderColor",new Color(0xd5dde6));
-        UIManager.put("TabbedPane.tabHeight",42);UIManager.put("TabbedPane.showTabSeparators",false);
-        UIManager.put("TabbedPane.tabType","underlined");UIManager.put("TabbedPane.tabSelectionHeight",0);
-        UIManager.put("TabbedPane.tabInsets",new Insets(4,6,4,6));
-        UIManager.put("TabbedPane.background",SURFACE);UIManager.put("TabbedPane.selectedBackground",SURFACE);
-        UIManager.put("TabbedPane.selectedForeground",INK);UIManager.put("TabbedPane.contentAreaColor",LINE);
-        UIManager.put("TabbedPane.hoverColor",SURFACE);UIManager.put("TabbedPane.focusColor",SURFACE);
-        UIManager.put("TabbedPane.contentBorderInsets",new Insets(0,0,0,0));UIManager.put("TabbedPane.underlineColor",ACCENT);
-        UIManager.put("MenuBar.background",Color.WHITE);UIManager.put("MenuBar.borderColor",LINE);UIManager.put("MenuBar.hoverBackground",new Color(0xeef2f6));
-        UIManager.put("PopupMenu.background",Color.WHITE);UIManager.put("PopupMenu.borderColor",new Color(0xd5dde6));UIManager.put("MenuItem.margin",new Insets(5,8,5,8));
-        for(String menu:new String[]{"Menu","MenuItem","CheckBoxMenuItem","RadioButtonMenuItem"}){UIManager.put(menu+".selectionBackground",TINT);UIManager.put(menu+".selectionForeground",INK);}
-        UIManager.put("MenuItem.acceleratorForeground",MUTED);UIManager.put("MenuItem.acceleratorSelectionForeground",ACCENT_DARK);
-        for (Object key : Collections.list(UIManager.getDefaults().keys()))
-            if (UIManager.get(key) instanceof javax.swing.plaf.FontUIResource) UIManager.put(key,font);
-        UIManager.put("Panel.background",SURFACE); UIManager.put("Label.foreground",INK);UIManager.put("OptionPane.background",SURFACE);
-        UIManager.put("TabbedPane.selected",Color.WHITE); UIManager.put("Button.background",Color.WHITE);UIManager.put("Button.borderColor",new Color(0xd5dde6));
-        UIManager.put("Button.hoverBackground",new Color(0xf1f5f9));UIManager.put("Button.pressedBackground",new Color(0xe2e8f0));
-        UIManager.put("Button.default.background",ACCENT);UIManager.put("Button.default.foreground",Color.WHITE);UIManager.put("Button.default.borderColor",ACCENT_DARK);
-        UIManager.put("Button.default.hoverBackground",ACCENT_DARK);UIManager.put("Button.default.focusedBackground",ACCENT);UIManager.put("Button.default.boldText",true);
-        UIManager.put("SplitPane.dividerSize",6);UIManager.put("SplitPaneDivider.gripColor",new Color(0xb6c2d0));
-        UIManager.put("TextArea.selectionBackground",new Color(0xccefe9));UIManager.put("TextField.selectionBackground",new Color(0xccefe9));UIManager.put("TextPane.selectionBackground",new Color(0xccefe9));
-        UIManager.put("ScrollBar.width",10);UIManager.put("ScrollBar.thumbArc",999);UIManager.put("ScrollBar.thumbInsets",new Insets(2,2,2,2));UIManager.put("ScrollBar.showButtons",false);
-        UIManager.put("ScrollBar.thumb",new Color(0xc5ceda));UIManager.put("ScrollBar.hoverThumbColor",new Color(0xa7b3c2));UIManager.put("ScrollBar.track",SURFACE);
-        UIManager.put("List.selectionBackground",TINT);UIManager.put("List.selectionForeground",INK);UIManager.put("List.selectionInactiveBackground",new Color(0xeef2f6));
-        UIManager.put("Table.selectionBackground",TINT);UIManager.put("Table.selectionForeground",INK);UIManager.put("Table.rowHeight",28);UIManager.put("Table.showHorizontalLines",true);UIManager.put("Table.gridColor",new Color(0xeef2f6));
-        UIManager.put("TableHeader.background",SURFACE);UIManager.put("TableHeader.separatorColor",LINE);UIManager.put("TableHeader.bottomSeparatorColor",LINE);UIManager.put("TableHeader.height",30);
-        UIManager.put("ToolTip.background",new Color(0x1e293b));UIManager.put("ToolTip.foreground",new Color(0xf1f5f9));UIManager.put("ToolTip.border",BorderFactory.createEmptyBorder(6,9,6,9));
-        UIManager.put("OptionPane.buttonMinimumWidth",88);UIManager.put("OptionPane.messageAreaBorder",BorderFactory.createEmptyBorder(4,4,8,4));
+    static void theme() {theme(Path.of(System.getProperty("user.home"),".lagless"));}
+    static void theme(Path home) {Theme.apply(Theme.saved(home));}
+    void setTheme(Theme.Mode mode){
+        preferences.set(Theme.KEY,mode.code);Theme.apply(mode);
+        workspaces.values().forEach(Workspace::syncTheme);
+        events.operation(I18n.t("界面主题：","Interface theme: ")+mode.label());
     }
     /** Accent filled button for the one main action on a surface. */
     static <B extends AbstractButton> B primary(B button){
-        button.putClientProperty("FlatLaf.style","background:#0d9488;foreground:#ffffff;hoverBackground:#0f766e;pressedBackground:#115e59;borderColor:#0f766e;focusedBorderColor:#0f766e;font:bold");
+        button.putClientProperty("FlatLaf.style","background:$Lagless.accent;foreground:$Lagless.onAccent;hoverBackground:$Lagless.accentHover;pressedBackground:$Lagless.accentPressed;borderColor:$Lagless.accent;focusedBorderColor:$Lagless.accentHover;font:bold");
         button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));return button;
     }
     List<Profile> profiles() { return Collections.list(accounts.elements()); }
@@ -129,6 +94,7 @@ public final class DesktopApp implements AutoCloseable {
             owned.forEach(SessionPane::close); windows.remove(frame); frame.dispose();
             events.record(null,I18n.t("关闭工作区窗口","Closed workspace window"));if(windows.isEmpty())close(owned);
         }});
+        frame.addWindowListener(new WindowAdapter(){@Override public void windowActivated(WindowEvent event){Theme.followSystem(workers);}});
         frame.setVisible(true);
     }
     static Image appIcon(){return appIcon(32);}
@@ -137,7 +103,7 @@ public final class DesktopApp implements AutoCloseable {
         Graphics2D graphics=icon.createGraphics();
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
         graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        graphics.setPaint(new GradientPaint(0,0,new Color(0x14b8a6),size,size,ACCENT_DARK));graphics.fillRoundRect(0,0,size,size,size*9/32,size*9/32);
+        graphics.setPaint(new GradientPaint(0,0,new Color(0x14b8a6),size,size,new Color(0x0f766e)));graphics.fillRoundRect(0,0,size,size,size*9/32,size*9/32);
         graphics.setColor(Color.WHITE);graphics.setFont(new Font(Font.SANS_SERIF,Font.BOLD,size*23/32));
         FontMetrics metrics=graphics.getFontMetrics();graphics.drawString("L",(size-metrics.stringWidth("L"))/2,(size-metrics.getHeight())/2+metrics.getAscent());
         graphics.dispose();return icon;

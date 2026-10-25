@@ -45,7 +45,7 @@ final class TransferDialog {
         timer=new javax.swing.Timer(250,e->refreshQueue());dialog.setSize(1060,760);dialog.setLocationRelativeTo(pane);dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);dialog.addWindowListener(new WindowAdapter(){public void windowClosed(WindowEvent e){closed=true;timer.stop();}});
         tasks.getSelectionModel().addListSelectionListener(e->showDetails());
     }
-    static JLabel label(String text,boolean selected,boolean directory,boolean link){JLabel label=new JLabel(text,UiIcons.file(directory,link),SwingConstants.LEFT);label.setIconTextGap(9);label.setFont(DesktopFonts.ui());label.setOpaque(true);label.setBorder(BorderFactory.createEmptyBorder(5,8,5,8));label.setBackground(selected?new Color(0xdcefe9):Color.WHITE);return label;}
+    static JLabel label(String text,boolean selected,boolean directory,boolean link){JLabel label=new JLabel(text,UiIcons.file(directory,link),SwingConstants.LEFT);label.setIconTextGap(9);label.setFont(DesktopFonts.ui());label.setOpaque(true);label.setBorder(BorderFactory.createEmptyBorder(5,8,5,8));label.setBackground(selected?Theme.TINT:Theme.SURFACE);return label;}
     static String size(long bytes){return bytes<1024?bytes+" B":bytes<1024*1024?String.format(Locale.ROOT,"%.1f KiB",bytes/1024.0):bytes<1024L*1024*1024?String.format(Locale.ROOT,"%.1f MiB",bytes/(1024.0*1024)):String.format(Locale.ROOT,"%.2f GiB",bytes/(1024.0*1024*1024));}
     private JPanel browser(String title,JTextField path,JList<?> list,Runnable up,Runnable refresh){
         boolean server=list==remote;List<JComponent> controls=server?remoteControls:localControls;JProgressBar loading=server?remoteLoading:localLoading;

@@ -18,17 +18,20 @@ final class Workspace {
     final JCheckBoxMenuItem pageWheelKeys=new JCheckBoxMenuItem(I18n.t("交互程序滚轮使用 PageUp / PageDown","Use PageUp / PageDown for the wheel in interactive programs"));
     private final java.util.List<JMenuItem> sessionItems=new ArrayList<>(),profileItems=new ArrayList<>();
     private final JCheckBoxMenuItem passThrough=new JCheckBoxMenuItem(I18n.t("兼容模式：直接传按键（当前连接）","Compatibility: send keys directly (this connection)"));
+    private final Map<Theme.Mode,JRadioButtonMenuItem> themeItems=new EnumMap<>(Theme.Mode.class);
+    private final JButton themeButton=new JButton();
     private String selectedId="";private boolean syncing;
     Workspace(DesktopApp app,JFrame owner){
         this.app=app;this.owner=owner;root.setName("workspace");root.add(menu(),BorderLayout.NORTH);tabs.setName("sessions");tabs.addTab(I18n.t("起始页","Start"),welcome());root.add(tabs,BorderLayout.CENTER);
         tabs.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);tabs.setTabComponentAt(0,new SessionTabHeader(tabs,I18n.t("起始页","Start"),null));updateTabHeaders(tabs);
-        JLabel foot=new JLabel(I18n.t("  ● 本地优先    ·    输入不等待网络                         ","  ● Local first    ·    typing never waits for the network                          ")+dev.lagless.Installation.version());foot.setFont(DesktopFonts.ui().deriveFont(11f));foot.setForeground(DesktopApp.MUTED);foot.setOpaque(true);foot.setBackground(Color.WHITE);foot.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(1,0,0,0,DesktopApp.LINE),new EmptyBorder(5,8,5,8)));root.add(foot,BorderLayout.SOUTH);
+        root.add(statusBar(),BorderLayout.SOUTH);
         quick.setName("quick-connect");quick.addActionListener(e->{if(!syncing&&quick.getSelectedItem() instanceof Profile p)selectedId=p.id();updateActions();});tabs.addChangeListener(e->updateActions());
         ListDataListener listener=new ListDataListener(){private boolean pending;private void changed(){if(pending)return;pending=true;SwingUtilities.invokeLater(()->{pending=false;syncAccounts();});}public void intervalAdded(ListDataEvent e){changed();}public void intervalRemoved(ListDataEvent e){changed();}public void contentsChanged(ListDataEvent e){changed();}};
         app.accounts.addListDataListener(listener);if(owner!=null)owner.addWindowListener(new WindowAdapter(){public void windowClosed(WindowEvent e){app.accounts.removeListDataListener(listener);app.workspaces.remove(owner);}});syncAccounts();
     }
     private JMenuBar menu(){
-        JMenuBar bar=new JMenuBar();bar.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(0,0,1,0,DesktopApp.LINE),new EmptyBorder(5,10,5,8)));
+        JMenuBar bar=new JMenuBar();bar.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(0,0,1,0,Theme.LINE),new EmptyBorder(4,10,4,8)));
+        JLabel brand=new JLabel("Lagless",new ImageIcon(DesktopApp.appIcon(18)),SwingConstants.LEFT);brand.setIconTextGap(7);brand.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,13f));brand.setForeground(Theme.INK);brand.setBorder(new EmptyBorder(0,2,0,14));bar.add(brand);
         JMenu connections=new JMenu(I18n.t("连接","Connections"));bar.add(connections);
         add(connections,I18n.t("连接库","Connection library"),()->new ConnectionLibrary(this),KeyStroke.getKeyStroke(KeyEvent.VK_L,InputEvent.CTRL_DOWN_MASK|InputEvent.SHIFT_DOWN_MASK));
         add(connections,I18n.t("添加","Add"),()->app.edit(owner,null),KeyStroke.getKeyStroke(KeyEvent.VK_N,InputEvent.CTRL_DOWN_MASK));
@@ -53,6 +56,9 @@ final class Workspace {
         pageWheelKeys.setSelected(Boolean.parseBoolean(app.preferences.get("wheel-page-keys","false")));
         pageWheelKeys.setToolTipText(I18n.t("开启后，需同时启用「交互程序中用滚轮滚动内容」，交互程序中的滚轮才会向远端发送 PageUp / PageDown；关闭时使用远端鼠标协议或逐行方向键。普通 shell 仍滚动本地历史。","When on, and \"Scroll interactive programs with the wheel\" is also on, the wheel sends PageUp / PageDown to interactive programs; when off, the remote mouse protocol or arrow keys are used. A normal shell still scrolls local history."));
         pageWheelKeys.addActionListener(e->{boolean selected=pageWheelKeys.isSelected();SwingUtilities.invokeLater(()->app.setPageWheelKeys(selected));});view.add(pageWheelKeys);
+        JMenu theme=new JMenu(I18n.t("主题","Theme"));ButtonGroup themes=new ButtonGroup();
+        for(Theme.Mode mode:Theme.Mode.values()){JRadioButtonMenuItem item=new JRadioButtonMenuItem(mode.label(),Theme.mode()==mode);item.setName("theme-"+mode.code);themes.add(item);theme.add(item);themeItems.put(mode,item);item.addActionListener(e->SwingUtilities.invokeLater(()->app.setTheme(mode)));}
+        view.add(theme);
         add(view,I18n.t("显示渲染…","Display rendering…"),()->NativeGraphics.settings(owner,app.preferences),null);
         recordFullscreen.setSelected(Boolean.parseBoolean(app.preferences.get("record-fullscreen","true")));
         recordFullscreen.setToolTipText(I18n.t("开启后，全量输入输出历史还会保存完整原始远端控制流；终端历史始终只保存普通命令行内容。","When on, the full input/output history also keeps the raw remote control stream; terminal history always keeps plain command-line content only."));
@@ -60,20 +66,49 @@ final class Workspace {
         view.addSeparator();add(view,I18n.t("终端历史","Terminal history"),()->new LogViewer(app,owner,0,null),null);add(view,I18n.t("全量输入输出历史","Full input/output history"),()->app.showLogs(owner,false,null),KeyStroke.getKeyStroke(KeyEvent.VK_H,InputEvent.CTRL_DOWN_MASK|InputEvent.SHIFT_DOWN_MASK));add(view,I18n.t("软件日志","Application log"),()->app.showLogs(owner,true,null),null);add(view,I18n.t("恢复草稿","Recover draft"),()->app.recoverDraft(owner),null);add(view,I18n.t("日志目录","Log folder"),()->app.browse(app.home.resolve("logs"),owner),null);
         JMenu tools=new JMenu(I18n.t("工具","Tools"));bar.add(tools);add(tools,I18n.t("协作","Collaborate"),()->app.collaborate(owner),null);add(tools,I18n.t("AI 设置","AI settings"),()->app.assistantSettings(owner),null);add(tools,I18n.t("插件","Plugins"),()->app.pluginInfo(owner),null);tools.addSeparator();add(tools,I18n.t("备份 / 恢复","Backup / restore"),()->app.backupMenu(owner),null);add(tools,I18n.t("更新","Updates"),()->app.update(owner),null);
         JMenu about=new JMenu(I18n.t("关于","About"));bar.add(about);add(about,I18n.t("GitHub 项目","GitHub project"),()->app.openProject(owner),null);add(about,I18n.t("关于 Lagless","About Lagless"),()->app.about(owner),null);about.addSeparator();add(about,"Language / 语言…",()->LanguageDialog.change(owner,app.preferences),null);
-        bar.add(Box.createHorizontalGlue());JLabel hint=new JLabel(I18n.t("SSH 工作区","SSH workspace"));hint.setForeground(DesktopApp.MUTED);hint.setBorder(new EmptyBorder(0,8,0,8));bar.add(hint);return bar;
+        bar.add(Box.createHorizontalGlue());
+        // One click flips light and dark; View ▸ Theme also offers following the system.
+        themeButton.setName("theme-toggle");themeButton.putClientProperty("JButton.buttonType","toolBarButton");themeButton.setFocusable(false);themeButton.setForeground(Theme.TEXT);
+        themeButton.addActionListener(e->app.setTheme(Theme.dark()?Theme.Mode.LIGHT:Theme.Mode.DARK));bar.add(themeButton);syncTheme();
+        return bar;
     }
     static JMenuItem add(JMenu menu,String label,Runnable action,KeyStroke shortcut){JMenuItem item=new JMenuItem(label);item.setName(label);if(shortcut!=null)item.setAccelerator(shortcut);item.addActionListener(e->{MenuSelectionManager.defaultManager().clearSelectedPath();SwingUtilities.invokeLater(action::run);});menu.add(item);return item;}
+    void syncTheme(){
+        JRadioButtonMenuItem item=themeItems.get(Theme.mode());if(item!=null)item.setSelected(true);
+        themeButton.setIcon(Theme.dark()?UiIcons.SUN:UiIcons.MOON);
+        themeButton.setToolTipText(Theme.dark()?I18n.t("切换到浅色主题","Switch to the light theme"):I18n.t("切换到深色主题","Switch to the dark theme"));
+    }
+    private JComponent statusBar(){
+        JPanel bar=new JPanel(new BorderLayout());bar.setBackground(Theme.SURFACE);bar.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(1,0,0,0,Theme.LINE),new EmptyBorder(4,12,4,12)));
+        JLabel left=new JLabel(I18n.t("本地优先  ·  输入不等待网络","Local first  ·  typing never waits for the network"),new StatusDot(),SwingConstants.LEFT);left.setIconTextGap(7);
+        JLabel right=new JLabel("v"+dev.lagless.Installation.version());
+        for(JLabel label:new JLabel[]{left,right}){label.setFont(DesktopFonts.ui().deriveFont(11.5f));label.setForeground(Theme.MUTED);}
+        bar.add(left,BorderLayout.WEST);bar.add(right,BorderLayout.EAST);return bar;
+    }
+    private static final class StatusDot implements Icon {
+        public int getIconWidth(){return 8;}public int getIconHeight(){return 8;}
+        public void paintIcon(Component c,Graphics graphics,int x,int y){Graphics2D g=(Graphics2D)graphics.create();try{g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);g.setColor(Theme.ACCENT);g.fillOval(x,y,8,8);}finally{g.dispose();}}
+    }
     private JPanel welcome(){
-        JPanel background=new JPanel(new GridBagLayout()){@Override protected void paintComponent(Graphics graphics){Graphics2D g=(Graphics2D)graphics.create();try{g.setPaint(new GradientPaint(0,0,new Color(0xf8fafc),0,getHeight(),new Color(0xecf3f6)));g.fillRect(0,0,getWidth(),getHeight());}finally{g.dispose();}}};
+        JPanel background=new JPanel(new GridBagLayout()){@Override protected void paintComponent(Graphics graphics){Graphics2D g=(Graphics2D)graphics.create();try{
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setColor(Theme.CANVAS);g.fillRect(0,0,getWidth(),getHeight());
+            // A soft accent glow behind the card; no image assets needed.
+            int r=Math.max(getWidth(),getHeight());Color glow=Theme.TINT;
+            g.setPaint(new RadialGradientPaint(new Point(getWidth()/2,getHeight()/3),r*0.6f,new float[]{0f,1f},new Color[]{glow,new Color(glow.getRed(),glow.getGreen(),glow.getBlue(),0)}));
+            g.fillRect(0,0,getWidth(),getHeight());
+        }finally{g.dispose();}}};
         JPanel card=new RoundedCard();card.setLayout(new BoxLayout(card,BoxLayout.Y_AXIS));card.setBorder(new EmptyBorder(40,48,40,48));
         JLabel logo=new JLabel(new ImageIcon(DesktopApp.appIcon(44)));card.add(logo);card.add(Box.createVerticalStrut(18));
-        JLabel eyebrow=new JLabel("READY WHEN YOU ARE");eyebrow.setForeground(DesktopApp.ACCENT);eyebrow.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,11));card.add(eyebrow);card.add(Box.createVerticalStrut(14));
+        JLabel eyebrow=new JLabel(I18n.t("准备就绪","READY WHEN YOU ARE"));eyebrow.setForeground(DesktopApp.ACCENT);eyebrow.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,11));card.add(eyebrow);card.add(Box.createVerticalStrut(14));
         JLabel title=new JLabel(I18n.t("从一个连接开始","Start with a connection"));title.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,28));title.setForeground(DesktopApp.INK);card.add(title);card.add(Box.createVerticalStrut(10));JLabel description=new JLabel(I18n.t("本地编辑、顺畅输入。让终端跟上你的思路。","Edit locally, type smoothly. Let the terminal keep up with your thinking."));description.setForeground(DesktopApp.MUTED);card.add(description);card.add(Box.createVerticalStrut(28));
         JPanel choose=new JPanel(new BorderLayout(8,0));choose.setOpaque(false);quick.setPreferredSize(new Dimension(330,38));choose.add(quick,BorderLayout.CENTER);choose.add(DesktopApp.button(I18n.t("连接","Connect"),()->open(currentProfile())),BorderLayout.EAST);choose.setMaximumSize(new Dimension(470,40));card.add(choose);card.add(Box.createVerticalStrut(16));
         JButton library=DesktopApp.button(I18n.t("管理连接  ·  Ctrl+Shift+L","Manage connections  ·  Ctrl+Shift+L"),()->new ConnectionLibrary(this));
         DesktopApp.primary(library);library.setMargin(new Insets(10,22,10,22));
         card.add(library);
-        card.add(Box.createVerticalStrut(18));JLabel note=new JLabel(I18n.t("连接库随用随开，终端始终是主角。","Open the connection library when you need it; the terminal stays center stage."));note.setForeground(DesktopApp.MUTED);note.setFont(DesktopFonts.ui().deriveFont(12f));card.add(note);
+        card.add(Box.createVerticalStrut(22));JPanel chips=new JPanel(new FlowLayout(FlowLayout.CENTER,8,0));chips.setOpaque(false);
+        for(String chip:new String[]{I18n.t("本地编辑","Local editing"),I18n.t("全屏程序","Full-screen apps"),I18n.t("后台会话","Background sessions"),I18n.t("AI 助手","AI assistant")})chips.add(new Chip(chip));
+        card.add(chips);card.add(Box.createVerticalStrut(18));JLabel note=new JLabel(I18n.t("连接库随用随开，终端始终是主角。","Open the connection library when you need it; the terminal stays center stage."));note.setForeground(DesktopApp.MUTED);note.setFont(DesktopFonts.ui().deriveFont(12f));card.add(note);
         // BoxLayout aligns children on a shared axis. Mixing the labels' and
         // button's left alignment with the connection row's center shifts the
         // row sideways and unnecessarily widens the card, especially at HiDPI.
@@ -88,7 +123,12 @@ final class Workspace {
     private void updateActions(){updateTabHeaders(tabs);boolean connected=active()!=null;passThrough.setSelected(connected&&active().passThrough());sessionItems.forEach(i->i.setEnabled(connected));profileItems.forEach(i->i.setEnabled(currentProfile()!=null));}
     void open(Profile profile){if(profile==null||app.isRestoring())return;selectProfile(profile);app.open(tabs,profile);updateActions();}
     void closeSession(SessionPane pane){if(pane==null)return;if(JOptionPane.showConfirmDialog(root,I18n.t("关闭此会话？草稿和日志会保留。","Close this session? Drafts and logs are kept."),I18n.t("关闭连接","Close connection"),JOptionPane.OK_CANCEL_OPTION)!=JOptionPane.OK_OPTION)return;pane.close();tabs.remove(pane);updateActions();}
-    /** White card with a soft shadow, drawn so it needs no translucent window. */
+    /** Small rounded label on a tinted background. */
+    private static final class Chip extends JLabel {
+        Chip(String text){super(text);setFont(DesktopFonts.ui().deriveFont(Font.BOLD,11.5f));setForeground(Theme.ACCENT_HOVER);setBorder(new EmptyBorder(4,10,4,10));}
+        @Override protected void paintComponent(Graphics graphics){Graphics2D g=(Graphics2D)graphics.create();try{g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);g.setColor(Theme.TINT);g.fillRoundRect(0,0,getWidth(),getHeight(),getHeight(),getHeight());}finally{g.dispose();}super.paintComponent(graphics);}
+    }
+    /** Surface card with a soft shadow, drawn so it needs no translucent window. */
     private static final class RoundedCard extends JPanel {
         RoundedCard(){setOpaque(false);}
         @Override public Insets getInsets(){Insets inner=super.getInsets();return new Insets(inner.top+6,inner.left+6,inner.bottom+10,inner.right+6);}
@@ -96,9 +136,9 @@ final class Workspace {
             Graphics2D g=(Graphics2D)graphics.create();try{
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
                 int w=getWidth()-12,h=getHeight()-16;
-                for(int i=6;i>0;i--){g.setColor(new Color(15,23,42,5));g.fillRoundRect(6-i,6-i+3,w+2*i,h+2*i,22+i,22+i);}
-                g.setColor(Color.WHITE);g.fillRoundRect(6,6,w,h,20,20);
-                g.setColor(DesktopApp.LINE);g.drawRoundRect(6,6,w,h,20,20);
+                for(int i=6;i>0;i--){g.setColor(Theme.shadow(1));g.fillRoundRect(6-i,6-i+3,w+2*i,h+2*i,22+i,22+i);}
+                g.setColor(Theme.SURFACE);g.fillRoundRect(6,6,w,h,20,20);
+                g.setColor(Theme.LINE);g.drawRoundRect(6,6,w,h,20,20);
             }finally{g.dispose();}
         }
     }

@@ -23,7 +23,7 @@ final class AssistantSettingsDialog {
         dialog.setIconImage(DesktopApp.appIcon());
         JPanel root=new JPanel(new BorderLayout(10,10));root.setBorder(new EmptyBorder(14,14,14,14));
         root.add(new JLabel(I18n.t("添加服务配置，在 AI 助手中按需选择模型。","Add a service, then choose a model in the AI assistant.")),BorderLayout.NORTH);
-        list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);list.setVisibleRowCount(7);list.setSelectionBackground(new Color(0xd8eee8));list.setSelectionForeground(DesktopApp.INK);refresh();
+        list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);list.setVisibleRowCount(7);list.setSelectionBackground(Theme.TINT);list.setSelectionForeground(DesktopApp.INK);refresh();
         JPanel actions=new JPanel(new GridLayout(0,1,6,6));
         actions.add(DesktopApp.button(I18n.t("添加","Add"),()->edit(null)));
         actions.add(DesktopApp.button(I18n.t("编辑","Edit"),()->edit(list.getSelectedValue())));

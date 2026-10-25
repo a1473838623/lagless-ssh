@@ -26,6 +26,7 @@ public final class NativeVerification {
         Map<String,Object> report=new LinkedHashMap<>();report.put("native",DesktopRuntime.nativeImage());
         render(home,work);report.put("ui",true);
         firstRunLanguage();report.put("first-run-language",true);
+        themeSwitch();report.put("theme-switch",true);
         windowEvents(home);report.put("native-window-events",true);
         verifyPdfAttachment(work);report.put("pdf-attachment-text",true);
         report.put("dialog-actions",NativeDialogVerification.run(work));
@@ -133,6 +134,19 @@ public final class NativeVerification {
             new JFileChooser(work.toFile()).getPreferredSize();new JOptionPane("测试",JOptionPane.QUESTION_MESSAGE,JOptionPane.OK_CANCEL_OPTION).getPreferredSize();new JPasswordField("password").getPreferredSize();new JSpinner(new SpinnerNumberModel(22,1,65535,1)).getPreferredSize();new JProgressBar().getPreferredSize();new JComboBox<>(new String[]{"SSH","SFTP"}).getPreferredSize();new JTable(new Object[][]{{"file","1 KiB"}},new String[]{"Name","Size"}).getPreferredSize();
         }catch(Exception e){throw new RuntimeException(e);}finally{if(frame!=null)frame.dispose();if(pane!=null)pane.close();if(app!=null){app.close();}}});
         require(appHolder[0].awaitShutdown(System.nanoTime()+TimeUnit.SECONDS.toNanos(15)),"render verification desktop shutdown");
+    }
+    /** Switch to the dark theme and back with a window open, as View ▸ Theme does. */
+    private static void themeSwitch()throws Exception{
+        SwingUtilities.invokeAndWait(()->{
+            JFrame frame=new JFrame("theme");try{
+                JButton primary=DesktopApp.primary(new JButton("ok"));frame.add(primary);frame.pack();frame.setVisible(true);
+                Theme.apply(Theme.Mode.DARK);
+                require(UIManager.getLookAndFeel() instanceof com.formdev.flatlaf.FlatDarkLaf,"dark look and feel");
+                require(primary.getBackground().getRGB()==Theme.ACCENT.getRGB(),"primary button follows the dark accent");
+                Theme.apply(Theme.Mode.LIGHT);
+                require(UIManager.getLookAndFeel() instanceof com.formdev.flatlaf.FlatLightLaf,"light look and feel");
+            }finally{frame.dispose();}
+        });
     }
     /** Exercise the modal screen shown before a new user's first workspace. */
     private static void firstRunLanguage()throws Exception{

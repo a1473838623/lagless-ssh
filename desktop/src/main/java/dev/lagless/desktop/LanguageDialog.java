@@ -35,7 +35,7 @@ final class LanguageDialog {
         JDialog dialog=new JDialog(owner,"Lagless · Language / 语言",Dialog.ModalityType.APPLICATION_MODAL);
         dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);dialog.setIconImage(DesktopApp.appIcon());
         Language[] result={initial};
-        JPanel root=new JPanel(new BorderLayout(0,18));root.setBackground(Color.WHITE);root.setBorder(new EmptyBorder(28,32,24,32));
+        JPanel root=new JPanel(new BorderLayout(0,18));root.setBackground(Theme.SURFACE);root.setBorder(new EmptyBorder(28,32,24,32));
         JPanel heading=new JPanel();heading.setOpaque(false);heading.setLayout(new BoxLayout(heading,BoxLayout.Y_AXIS));
         JLabel badge=new JLabel(new ImageIcon(DesktopApp.appIcon(40)));badge.setAlignmentX(0);heading.add(badge);heading.add(Box.createVerticalStrut(14));
         JLabel title=new JLabel("Welcome to Lagless");title.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,22f));title.setForeground(DesktopApp.INK);title.setAlignmentX(0);heading.add(title);
@@ -61,10 +61,10 @@ final class LanguageDialog {
     }
     private static JToggleButton choice(Language language){
         String hint=language==Language.ZH?"中文界面":"English interface";
-        JToggleButton card=new JToggleButton("<html><div style='padding:2px 4px'><b style='font-size:15px'>"+language.label+"</b><br><span style='color:#64748b'>"+hint+"</span></div></html>");
+        JToggleButton card=new JToggleButton("<html><div style='padding:2px 4px'><b style='font-size:15px'>"+language.label+"</b><br><span style='color:"+Theme.hex(Theme.MUTED)+"'>"+hint+"</span></div></html>");
         card.setName("language-"+language.code);card.setFocusPainted(false);card.setHorizontalAlignment(SwingConstants.LEFT);
         card.setPreferredSize(new Dimension(210,74));card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        card.putClientProperty("FlatLaf.style","arc:14;borderWidth:1;selectedBackground:#e6f6f3;selectedForeground:#0f172a;focusWidth:0");
+        card.putClientProperty("FlatLaf.style","arc:14;borderWidth:1;selectedBackground:$Lagless.tint;selectedForeground:$Lagless.ink;focusWidth:0");
         return card;
     }
 }
