@@ -1,4 +1,10 @@
 {
+  "reflection": [
+    {
+      "type": "com.formdev.flatlaf.ui.FlatButtonBorder",
+      "allDeclaredFields": true
+    }
+  ],
   "foreign": {
     "downcalls": [
       { "returnType": "void*", "parameterTypes": ["jlong"] },

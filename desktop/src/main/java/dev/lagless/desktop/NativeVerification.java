@@ -24,7 +24,9 @@ public final class NativeVerification {
         Path home=work.resolve(".lagless");Files.createDirectories(home);
         Files.writeString(home.resolve("config"),"completion = false\nremote-history = false\nquiet-ms = 30\n");
         Map<String,Object> report=new LinkedHashMap<>();report.put("native",DesktopRuntime.nativeImage());
-        render(home,work);report.put("ui",true);windowEvents(home);report.put("native-window-events",true);
+        render(home,work);report.put("ui",true);
+        firstRunLanguage();report.put("first-run-language",true);
+        windowEvents(home);report.put("native-window-events",true);
         verifyPdfAttachment(work);report.put("pdf-attachment-text",true);
         report.put("dialog-actions",NativeDialogVerification.run(work));
         NativeInputVerification.run(home,report);
@@ -131,6 +133,32 @@ public final class NativeVerification {
             new JFileChooser(work.toFile()).getPreferredSize();new JOptionPane("测试",JOptionPane.QUESTION_MESSAGE,JOptionPane.OK_CANCEL_OPTION).getPreferredSize();new JPasswordField("password").getPreferredSize();new JSpinner(new SpinnerNumberModel(22,1,65535,1)).getPreferredSize();new JProgressBar().getPreferredSize();new JComboBox<>(new String[]{"SSH","SFTP"}).getPreferredSize();new JTable(new Object[][]{{"file","1 KiB"}},new String[]{"Name","Size"}).getPreferredSize();
         }catch(Exception e){throw new RuntimeException(e);}finally{if(frame!=null)frame.dispose();if(pane!=null)pane.close();if(app!=null){app.close();}}});
         require(appHolder[0].awaitShutdown(System.nanoTime()+TimeUnit.SECONDS.toNanos(15)),"render verification desktop shutdown");
+    }
+    /** Exercise the modal screen shown before a new user's first workspace. */
+    private static void firstRunLanguage()throws Exception{
+        SwingUtilities.invokeAndWait(()->{
+            java.util.concurrent.atomic.AtomicBoolean dismissed=new java.util.concurrent.atomic.AtomicBoolean();
+            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(15);
+            javax.swing.Timer dismiss=new javax.swing.Timer(100,null);
+            dismiss.addActionListener(event->{
+                for(Window window:Window.getWindows()){
+                    if(!(window instanceof JDialog dialog)||!dialog.isShowing()||!dialog.getTitle().startsWith("Lagless · Language"))continue;
+                    JButton button=findButton(dialog,"language-continue");
+                    if(button!=null){dismissed.set(true);dismiss.stop();button.doClick();return;}
+                    if(System.nanoTime()>deadline){dismiss.stop();dialog.dispose();return;}
+                }
+            });
+            dismiss.start();
+            try{LanguageDialog.ask(null,dev.lagless.I18n.Language.system());require(dismissed.get(),"first-run language dialog dismissed");}
+            finally{dismiss.stop();}
+        });
+    }
+    private static JButton findButton(Container root,String name){
+        for(Component child:root.getComponents()){
+            if(child instanceof JButton button&&name.equals(button.getName()))return button;
+            if(child instanceof Container nested){JButton result=findButton(nested,name);if(result!=null)return result;}
+        }
+        return null;
     }
     private static void chooseMergedLine(Container root){for(Component child:root.getComponents()){if(child instanceof JOptionPane option){option.setValue("合并为一行（软换行）");return;}if(child instanceof Container nested)chooseMergedLine(nested);}}
     private static JTable findQueue(Container container){for(Component child:container.getComponents()){if(child instanceof JTable table&&"transfer-queue".equals(table.getName()))return table;if(child instanceof Container nested){JTable table=findQueue(nested);if(table!=null)return table;}}return null;}
