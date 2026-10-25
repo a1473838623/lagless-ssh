@@ -73,4 +73,32 @@ class ThemeTest {
             if(child instanceof Container nested)count+=countBrandLabels(nested);
         }return count;
     }
+    @Test void everyMenuItemKindSharesOneTextColumn()throws Exception{
+        SwingUtilities.invokeAndWait(()->{
+            Theme.apply(Theme.Mode.LIGHT);
+            java.awt.Insets plain=UIManager.getInsets("MenuItem.margin");
+            for(String kind:new String[]{"Menu","CheckBoxMenuItem","RadioButtonMenuItem"})assertEquals(plain,UIManager.getInsets(kind+".margin"),kind);
+        });
+    }
+    @Test void switchingAppsClosesOpenMenus()throws Exception{
+        SwingUtilities.invokeAndWait(()->{
+            JPanel holder=new JPanel();JMenuBar bar=new JMenuBar();JMenu menu=new JMenu("View");menu.add(new JMenuItem("one"));bar.add(menu);holder.add(bar);
+            try{
+                MenuSelectionManager.defaultManager().setSelectedPath(new MenuElement[]{bar,menu});
+                assertEquals(2,MenuSelectionManager.defaultManager().getSelectedPath().length);
+                Theme.closePopups();
+                assertEquals(0,MenuSelectionManager.defaultManager().getSelectedPath().length);
+            }finally{MenuSelectionManager.defaultManager().clearSelectedPath();}
+        });
+    }
+    @Test void rollbackKnowsWhichVersionItRestores()throws Exception{
+        Path updates=dir.resolve(".updates");java.nio.file.Files.createDirectories(updates);
+        assertNull(NativeUpdater.previousBackup(dir));
+        java.nio.file.Files.write(updates.resolve("previous.zip"),new byte[0]);
+        java.nio.file.Files.writeString(updates.resolve("previous.json"),"{\"version\":\"0.2.0-rc.8.14\",\"replacedBy\":\""+DesktopRuntime.version()+"\"}");
+        assertEquals(new NativeUpdater.Backup("0.2.0-rc.8.14",true),NativeUpdater.previousBackup(dir));
+        // The current version came from a hand-extracted ZIP: the backup is from an earlier update.
+        java.nio.file.Files.writeString(updates.resolve("previous.json"),"{\"version\":\"0.2.0-rc.8.13\",\"replacedBy\":\"0.2.0-rc.8.14\"}");
+        assertEquals(new NativeUpdater.Backup("0.2.0-rc.8.13",false),NativeUpdater.previousBackup(dir));
+    }
 }

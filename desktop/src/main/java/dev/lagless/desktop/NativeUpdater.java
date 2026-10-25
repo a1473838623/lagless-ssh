@@ -74,6 +74,24 @@ public final class NativeUpdater {
     public static void stage(Path home,Path archive,boolean arm)throws Exception {
         Path staged=prepare(home,archive);if(arm)arm(home,staged);
     }
+    /**
+     * The saved backup and whether it is the version used just before this one.
+     * It is not when the current version was installed by extracting a ZIP:
+     * only in-app updates save a backup, so it is then from an earlier update.
+     */
+    record Backup(String version,boolean immediate){}
+    static Backup previousBackup(Path home){
+        Path updates=home.resolve(".updates"),archive=updates.resolve("previous.zip");
+        if(!Files.isRegularFile(archive))return null;
+        try{
+            Path info=updates.resolve("previous.json");
+            if(Files.isRegularFile(info)){Object json=Json.parse(Files.readString(info));String version=Json.string(json,"version");
+                if(version!=null)return new Backup(version,Objects.equals(Json.string(json,"replacedBy"),DesktopRuntime.version()));}
+            try(var zip=new java.util.zip.ZipFile(archive.toFile())){var entry=zip.getEntry(NativeBundle.MANIFEST);
+                if(entry!=null&&entry.getSize()<2*1024*1024)try(var in=zip.getInputStream(entry)){return new Backup(Json.string(Json.parse(new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8)),"version"),false);}}
+        }catch(Exception ignored){}
+        return new Backup(null,false);
+    }
     public static void rollback()throws Exception {
         Path home=DesktopRuntime.home(),archive=home.resolve(".updates/previous.zip");
         if(!Files.isRegularFile(archive))throw new IOException(I18n.t("没有上一版原生包备份","No backup of the previous native package"));stage(home,archive,true);
@@ -250,6 +268,7 @@ public final class NativeUpdater {
             Files.copy(staged.resolve(NativeBundle.MANIFEST),home.resolve(NativeBundle.MANIFEST),StandardCopyOption.REPLACE_EXISTING);
             NativeBundle.validate(home,true);
             Files.move(backup,updates.resolve("previous.zip"),StandardCopyOption.REPLACE_EXISTING);
+            ProfileStore.atomicWrite(updates.resolve("previous.json"),Json.stringify(Map.of("version",old.version(),"replacedBy",next.version())));
         }catch(Exception error){
             Path recovery=updates.resolve("recovery-"+UUID.randomUUID());
             try {NativeBundle.Manifest original=NativeBundle.extract(backup,recovery,true);copyManaged(recovery,home,original);

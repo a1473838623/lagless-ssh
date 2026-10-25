@@ -25,6 +25,11 @@ import java.util.regex.Pattern;
 final class BackgroundSessions {
     private BackgroundSessions(){}
     static final Pattern NAME=Pattern.compile("[A-Za-z0-9_-]{1,80}");
+    /** Read-only facts about the server and its tmux, logged when a background session will not stay up. */
+    static final String DIAGNOSTICS="uname -sr 2>&1; (. /etc/os-release 2>/dev/null && echo \"$PRETTY_NAME\"); tmux -V 2>&1; echo \"TERM=$TERM SHELL=$SHELL\"; "+
+            "tmux has-session -t =NAME 2>&1 && echo session-alive; tmux ls 2>&1 | head -5; ls -ld \"${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)\" 2>&1; "+
+            "grep -hs '^ *KillUserProcesses' /etc/systemd/logind.conf /etc/systemd/logind.conf.d/*.conf; loginctl show-user \"$(id -un)\" -p Linger 2>/dev/null; "+
+            "systemd-run --user --scope --quiet true >/dev/null 2>&1 && echo user-scope-ok || echo user-scope-unavailable; tail -n 5 \"$HOME/.tmux.conf\" 2>/dev/null | sed 's/^/tmux.conf: /'";
     /** Server folder for the recordings, relative to the login directory. */
     static final String FOLDER=".lagless/background";
     static final String CHECK="command -v tmux >/dev/null 2>&1 && echo \"tmux=$(tmux -V 2>/dev/null)\"; "+

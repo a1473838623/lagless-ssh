@@ -150,7 +150,9 @@ public final class SshConnection implements AutoCloseable {
             ch.setPtyType(term, cols, rows, 0, 0); ch.setPty(true);
             // tmux refuses to start when the server lacks this terminal's description.
             ch.setCommand("command -v tput >/dev/null 2>&1 && ! tput -T\"$TERM\" clear >/dev/null 2>&1 && export TERM=xterm; "
-                    + "if command -v tmux >/dev/null 2>&1; then exec tmux -u new-session -A -s " + resumeId
+                    // Outside this login's systemd scope, so ending the SSH session cannot take tmux with it.
+                    + "s=; command -v systemd-run >/dev/null 2>&1 && systemd-run --user --scope --quiet true >/dev/null 2>&1 && s='systemd-run --user --scope --quiet'; "
+                    + "if command -v tmux >/dev/null 2>&1; then exec $s tmux -u new-session -A -s " + resumeId
                     + "; else printf '\\r\\n[lagless] tmux unavailable; reconnect starts a NEW shell.\\r\\n'; exec \"${SHELL:-/bin/sh}\" -l; fi");
             shell = ch;
         }

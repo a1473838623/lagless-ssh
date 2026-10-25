@@ -36,12 +36,23 @@ final class UpdateDialog {
         JPanel buttons=DesktopApp.row();
         check=DesktopApp.button(I18n.t("检查更新","Check for updates"),()->runUpdate(true));download=DesktopApp.button(I18n.t("下载更新","Download update"),()->runUpdate(false));
         importBundle=DesktopApp.button(I18n.t("导入原生更新包","Import native update package"),this::importBundle);
-        rollback=DesktopApp.button(I18n.t("回滚上一版本","Roll back to previous version"),()->start(I18n.t("正在准备回滚…","Preparing rollback…"),()->{if(DesktopRuntime.nativeImage())NativeUpdater.rollback();else Updater.stageRollback(Installation.runningJar());return new Result(I18n.t("回滚已准备好，请重启以应用。","Rollback is ready; restart to apply it."),true);}));
+        rollback=DesktopApp.button(I18n.t("回滚上一版本","Roll back to previous version"),()->{if(confirmRollback())start(I18n.t("正在准备回滚…","Preparing rollback…"),()->{if(DesktopRuntime.nativeImage())NativeUpdater.rollback();else Updater.stageRollback(Installation.runningJar());return new Result(I18n.t("回滚已准备好，请重启以应用。","Rollback is ready; restart to apply it."),true);});});
         restart=DesktopApp.button(I18n.t("重启并应用更新","Restart and apply update"),()->app.restartForUpdate(dialog));
         buttons.add(check);buttons.add(download);if(DesktopRuntime.nativeImage()){buttons.add(importBundle);buttons.add(restart);output.setText(NativeUpdater.status()+"\n\n");}buttons.add(rollback);dialog.add(buttons,BorderLayout.SOUTH);
         timer=new Timer(150,event->renderProgress());
         dialog.addWindowListener(new WindowAdapter(){@Override public void windowClosed(WindowEvent event){disposed=true;timer.stop();}});
         refresh();if(checkOnOpen)runUpdate(true);
+    }
+    /** Names the version rollback restores, and warns when it is not the one used just before. */
+    private boolean confirmRollback(){
+        if(!DesktopRuntime.nativeImage())return true;
+        NativeUpdater.Backup backup=NativeUpdater.previousBackup(DesktopRuntime.home());
+        if(backup==null)return true; // rollback() reports the missing backup
+        String version=backup.version()==null?I18n.t("（版本未知）","(unknown version)"):backup.version();
+        String message=backup.immediate()?I18n.t("回滚到上一版本 ","Roll back to the previous version, ")+version+I18n.t("？","?")
+                :I18n.t("保存的备份是 ","The saved backup is ")+version+I18n.t("。当前版本 ",". The current version, ")+DesktopRuntime.version()
+                        +I18n.t(" 不是通过程序内更新安装的（例如手动解压 ZIP），因此没有保存它之前的那个版本。\n仍要回滚到 "," was not installed by the in-app updater (for example, by extracting a ZIP), so the version you used just before it was not saved.\nRoll back to ")+version+I18n.t("？","anyway?");
+        return JOptionPane.showConfirmDialog(dialog,message,I18n.t("回滚","Roll back"),JOptionPane.OK_CANCEL_OPTION,backup.immediate()?JOptionPane.QUESTION_MESSAGE:JOptionPane.WARNING_MESSAGE)==JOptionPane.OK_OPTION;
     }
     boolean isDisplayable(){return !disposed;}
     void show(){dialog.setVisible(true);dialog.toFront();}

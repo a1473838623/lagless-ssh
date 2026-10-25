@@ -112,7 +112,7 @@ public final class SessionPane extends JPanel implements AutoCloseable {
         if(connecting || stopped)return;
         connecting=true;List<Profile> routes=app.profiles();
         connectionWorker.submit(() -> {
-            int failures=0;
+            int failures=0,quickEnds=0;
             try {
                 while(!stopped) {
                     long connectedAt=0;
@@ -147,6 +147,13 @@ public final class SessionPane extends JPanel implements AutoCloseable {
                         app.events.record(profile.name(),I18n.t("SSH 已连接","SSH connected"));
                         view.accepting(true);session.run();
                         int exit=connection.shellExitStatus();
+                        // A background session that ends right after attaching: record why, and stop retrying in a loop.
+                        if(background!=null&&!stopped&&System.nanoTime()-connectedAt<TimeUnit.SECONDS.toNanos(15)){
+                            String report=connection.exec(BackgroundSessions.DIAGNOSTICS.replace("NAME",background),10_000);
+                            app.events.operation(profile.name(),I18n.t("后台会话 ","Background session ")+background+I18n.t(" 连接后很快结束；状态 "," ended right after attaching; status ")+exit+I18n.t("；服务器诊断：\n","; server diagnostics:\n")+(report==null?I18n.t("（无法读取）","(unavailable)"):report.strip()));
+                            if(++quickEnds>=2){retry=false;updateStatus(I18n.t("后台会话连续启动失败，已停止重试 · 诊断信息见「软件日志」","The background session keeps ending; retries stopped · diagnostics are in the Application log"));
+                                lastNotice.set(I18n.t("后台会话在服务器上反复结束。诊断信息已写入「视图 ▸ 软件日志」。","The background session keeps ending on the server. Diagnostics were written to View ▸ Application log."));}
+                        }else quickEnds=0;
                         if(exit>=0) {app.events.record(profile.name(),I18n.t("远程 shell 退出 · 状态 ","Remote shell exits · status ")+exit);updateStatus(I18n.t("远程 shell 已退出 · 状态 ","Remote shell exited · status ")+exit);retry=false;}
                     } catch(Exception e) {app.events.record(profile.name(),I18n.t("连接中断：","Connection lost: ")+e.getMessage());lastNotice.set(I18n.t("连接中断：","Connection lost: ")+e.getMessage());}
                     finally {

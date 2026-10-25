@@ -103,7 +103,7 @@ final class Workspace {
         JLabel chooseLabel=new JLabel(I18n.t("选择连接","CHOOSE CONNECTION"));chooseLabel.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,11));chooseLabel.setForeground(Theme.MUTED);main.add(chooseLabel);main.add(Box.createVerticalStrut(10));
         JPanel choose=new JPanel(new BorderLayout(10,0));choose.setOpaque(false);quick.setPreferredSize(new Dimension(355,43));choose.add(quick,BorderLayout.CENTER);
         JButton connect=DesktopApp.primary(DesktopApp.button(I18n.t("连接","Connect"),()->open(currentProfile())));connect.setPreferredSize(new Dimension(106,43));choose.add(connect,BorderLayout.EAST);
-        choose.setMaximumSize(new Dimension(Integer.MAX_VALUE,45));main.add(choose);main.add(Box.createVerticalStrut(15));
+        choose.setMaximumSize(new Dimension(Integer.MAX_VALUE,45));main.add(choose);main.add(Box.createVerticalStrut(8));
         // BoxLayout, not FlowLayout: the first button starts exactly under the field above.
         JPanel actions=new JPanel();actions.setLayout(new BoxLayout(actions,BoxLayout.X_AXIS));actions.setOpaque(false);
         actions.add(DesktopApp.button(I18n.t("连接库","Connection library"),()->new ConnectionLibrary(this)));actions.add(Box.createHorizontalStrut(10));

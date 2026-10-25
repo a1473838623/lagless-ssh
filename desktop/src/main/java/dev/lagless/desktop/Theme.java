@@ -106,11 +106,34 @@ final class Theme {
         listeners.forEach(Runnable::run);
     }
 
+    private static boolean popupsGuarded;
+    /**
+     * Menus, tooltips and dropdowns are separate native windows here (they must
+     * cover the native terminal), and Swing does not always close them when the
+     * user switches to another application, so they stayed above other apps.
+     */
+    static synchronized void closePopupsOnAppSwitch(){
+        if(popupsGuarded)return;popupsGuarded=true;
+        Toolkit.getDefaultToolkit().addAWTEventListener(event->{
+            if(event.getID()!=java.awt.event.WindowEvent.WINDOW_DEACTIVATED)return;
+            if(((java.awt.event.WindowEvent)event).getOppositeWindow()!=null)return; // focus moved within Lagless
+            closePopups();
+        },AWTEvent.WINDOW_EVENT_MASK);
+    }
+    static void closePopups(){
+        MenuSelectionManager.defaultManager().clearSelectedPath();
+        for(Window window:Window.getWindows()){
+            if(!window.isShowing()||window.getType()!=Window.Type.POPUP||!(window instanceof RootPaneContainer root))continue;
+            for(Component part:root.getContentPane().getComponents())if(part instanceof JPopupMenu menu)menu.setVisible(false);
+        }
+        ToolTipManager tips=ToolTipManager.sharedInstance();if(tips.isEnabled()){tips.setEnabled(false);tips.setEnabled(true);}
+    }
     private static ColorUIResource c(int rgb){return new ColorUIResource(rgb);}
     private static void install(Palette p,Font font){
         // Native display canvases are heavyweight windows. Menus/tooltips must
         // also be heavyweight to stay above them, including on separate monitors.
         JPopupMenu.setDefaultLightWeightPopupEnabled(false);
+        closePopupsOnAppSwitch();
         ToolTipManager.sharedInstance().setLightWeightPopupEnabled(false);
         // A menu needs one opaque popup window above the native terminal.
         // Avoid a second translucent shadow window and its separate peer.
@@ -130,13 +153,14 @@ final class Theme {
         // The tab headers paint flat workspace tabs, integrated with the canvas.
         UIManager.put("TabbedPane.tabHeight",43);UIManager.put("TabbedPane.showTabSeparators",false);UIManager.put("TabbedPane.tabType","card");
         UIManager.put("TabbedPane.tabSelectionHeight",0);UIManager.put("TabbedPane.contentSeparatorHeight",0);UIManager.put("TabbedPane.tabInsets",new Insets(4,3,4,3));
-        UIManager.put("TabbedPane.tabAreaInsets",new Insets(0,8,0,8));UIManager.put("TabbedPane.contentBorderInsets",new Insets(0,0,0,0));
+        UIManager.put("TabbedPane.tabAreaInsets",new Insets(6,14,4,14));UIManager.put("TabbedPane.contentBorderInsets",new Insets(0,0,0,0));
         for(String key:new String[]{"background","selectedBackground","hoverColor","focusColor","contentAreaColor","underlineColor","inactiveUnderlineColor","disabledUnderlineColor"})
             UIManager.put("TabbedPane."+key,c(p.canvas()));
         UIManager.put("TabbedPane.selectedForeground",c(p.ink()));UIManager.put("TabbedPane.foreground",c(p.text()));UIManager.put("TabbedPane.buttonHoverBackground",c(p.hover()));
         UIManager.put("MenuBar.background",c(p.surface()));UIManager.put("MenuBar.borderColor",c(p.line()));UIManager.put("MenuBar.hoverBackground",c(p.hover()));UIManager.put("MenuBar.itemMargins",new Insets(4,10,4,10));
         UIManager.put("PopupMenu.background",c(p.surface()));UIManager.put("PopupMenu.borderColor",c(p.border()));UIManager.put("PopupMenu.borderInsets",new Insets(5,1,5,1));
-        UIManager.put("MenuItem.margin",new Insets(6,10,6,10));UIManager.put("Menu.margin",new Insets(6,10,6,10));UIManager.put("MenuItem.selectionArc",8);UIManager.put("MenuItem.selectionInsets",new Insets(0,5,0,5));
+        // One margin for every kind of item: FlatLaf's smaller check/radio margin put their text 4 px left of plain items.
+        for(String item:new String[]{"MenuItem","Menu","CheckBoxMenuItem","RadioButtonMenuItem"})UIManager.put(item+".margin",new Insets(6,8,6,10));UIManager.put("MenuItem.selectionArc",8);UIManager.put("MenuItem.selectionInsets",new Insets(0,5,0,5));
         for(String menu:new String[]{"Menu","MenuItem","CheckBoxMenuItem","RadioButtonMenuItem"}){
             UIManager.put(menu+".background",c(p.surface()));UIManager.put(menu+".foreground",c(p.ink()));
             UIManager.put(menu+".selectionBackground",c(p.tint()));UIManager.put(menu+".selectionForeground",c(p.ink()));
