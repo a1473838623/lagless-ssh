@@ -101,7 +101,7 @@ final class AssistantChatPanel extends JPanel {
         advanced.setVisible(false);composerArea.add(advanced);
         more.addActionListener(e->{advanced.setVisible(more.isSelected());composerArea.revalidate();});
         JPanel referenceArea=new JPanel(new BorderLayout(4,4));referenceArea.setOpaque(false);referenceArea.setAlignmentX(Component.LEFT_ALIGNMENT);referenceArea.setBorder(new EmptyBorder(2,0,4,0));referenceArea.setMaximumSize(new Dimension(Integer.MAX_VALUE,120));
-        JPanel fileButtons=new JPanel(new FlowLayout(FlowLayout.LEFT,5,0));fileButtons.setOpaque(false);fileButtons.add(button(I18n.t("添加图片 / 文件","Add image / file"),this::chooseAttachments));fileButtons.add(button(I18n.t("选择具体日志","Choose logs"),this::chooseLogs));fileButtons.add(button(I18n.t("移除选中","Remove selected"),this::removeSelectedReference));referenceArea.add(fileButtons,BorderLayout.NORTH);
+        JPanel fileButtons=new JPanel(new WrapLayout(FlowLayout.LEADING,5,0));fileButtons.setOpaque(false);fileButtons.add(button(I18n.t("添加图片 / 文件","Add image / file"),this::chooseAttachments));fileButtons.add(button(I18n.t("选择具体日志","Choose logs"),this::chooseLogs));fileButtons.add(button(I18n.t("移除选中","Remove selected"),this::removeSelectedReference));referenceArea.add(fileButtons,BorderLayout.NORTH);
         referenceHint.setForeground(DesktopApp.MUTED);referenceHint.setBorder(new EmptyBorder(7,7,7,7));referenceContent.add(referenceHint,"empty");attachments.setVisibleRowCount(2);attachments.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);attachments.setCellRenderer((list,value,index,selectedItem,focus)->{JLabel l=new JLabel(value.toString());l.setToolTipText(value.path().toString());l.setBorder(new EmptyBorder(3,6,3,6));l.setOpaque(true);l.setBackground(selectedItem?Theme.TINT:list.getBackground());l.setForeground(list.getForeground());return l;});referenceContent.add(new JScrollPane(attachments),"list");referenceArea.add(referenceContent,BorderLayout.CENTER);composerArea.add(referenceArea);attachmentModel.addListDataListener(new javax.swing.event.ListDataListener(){public void intervalAdded(javax.swing.event.ListDataEvent e){updateReferences();}public void intervalRemoved(javax.swing.event.ListDataEvent e){updateReferences();}public void contentsChanged(javax.swing.event.ListDataEvent e){updateReferences();}});updateReferences();
         composer.setLineWrap(true);composer.setWrapStyleWord(true);composer.setFont(DesktopFonts.ui().deriveFont(13f));composer.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(Theme.BORDER),new EmptyBorder(8,9,8,9)));ClipboardActions.install(composer,status::setText,null,this::pasteImage);
         composer.setRows(3);
@@ -118,7 +118,7 @@ final class AssistantChatPanel extends JPanel {
 
     private static String safe(String value){return value.replaceAll("[^A-Za-z0-9_.-]","_");}
     private static JButton button(String text,Runnable action){JButton b=new JButton(text);b.setFocusable(false);b.addActionListener(e->action.run());return b;}
-    private static JPanel labelled(String title,JComponent component){JPanel p=new JPanel(new FlowLayout(FlowLayout.LEFT,4,0));p.add(new JLabel(title));p.add(component);return p;}
+    private static JPanel labelled(String title,JComponent component){JPanel p=new JPanel(new BorderLayout(6,0));p.setOpaque(false);JLabel label=new JLabel(title);label.setForeground(Theme.MUTED);p.add(label,BorderLayout.WEST);p.add(component,BorderLayout.CENTER);return p;}
     private Conversation current(){Object item=conversations.getSelectedItem();return item instanceof Conversation c?c:null;}
     private void showSelected(JPanel body){Conversation c=current();body.removeAll();if(c!=null){body.add(c.panel,BorderLayout.CENTER);render(c);}body.revalidate();body.repaint();updateSendState();}
     private void newConversation(){Conversation c=new Conversation(I18n.t("对话 ","Chat ")+java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm"))+" · "+(nextConversation++));changingSelection=true;conversations.addItem(c);conversations.setSelectedItem(c);changingSelection=false;persist();updateSendState();SwingUtilities.invokeLater(this::focusComposer);}
@@ -265,6 +265,12 @@ final class AssistantChatPanel extends JPanel {
     /** FlowLayout that wraps controls instead of clipping them at narrow dock widths. */
     private static final class WrapLayout extends FlowLayout {
         WrapLayout(int align,int hgap,int vgap){super(align,hgap,vgap);}
+        /** FlowLayout puts a gap before the first control; drop it so each row starts flush with the panel's edge. */
+        @Override public void layoutContainer(Container target){
+            super.layoutContainer(target);
+            if(getAlignment()!=FlowLayout.LEADING&&getAlignment()!=FlowLayout.LEFT)return;
+            synchronized(target.getTreeLock()){for(Component c:target.getComponents())if(c.isVisible())c.setLocation(c.getX()-getHgap(),c.getY());}
+        }
         @Override public Dimension preferredLayoutSize(Container target){return measure(target);}
         @Override public Dimension minimumLayoutSize(Container target){synchronized(target.getTreeLock()){Insets in=target.getInsets();int height=0;for(Component c:target.getComponents())if(c.isVisible())height=Math.max(height,c.getMinimumSize().height);return new Dimension(100,height+in.top+in.bottom+getVgap()*2);}}
         private Dimension measure(Container target){synchronized(target.getTreeLock()){int width=target.getWidth();if(width<=0)width=500;Insets in=target.getInsets();int max=Math.max(100,width-in.left-in.right-getHgap()*2),row=0,total=0,line=0;for(Component c:target.getComponents()){if(!c.isVisible())continue;Dimension d=c.getPreferredSize();if(line>0&&line+d.width>max){total+=row+getVgap();row=0;line=0;}if(line>0)line+=getHgap();line+=d.width;row=Math.max(row,d.height);}total+=row;return new Dimension(Math.min(max,line)+in.left+in.right+getHgap()*2,total+in.top+in.bottom+getVgap()*2);}}

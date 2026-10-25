@@ -104,8 +104,9 @@ final class Workspace {
         JPanel choose=new JPanel(new BorderLayout(10,0));choose.setOpaque(false);quick.setPreferredSize(new Dimension(355,43));choose.add(quick,BorderLayout.CENTER);
         JButton connect=DesktopApp.primary(DesktopApp.button(I18n.t("连接","Connect"),()->open(currentProfile())));connect.setPreferredSize(new Dimension(106,43));choose.add(connect,BorderLayout.EAST);
         choose.setMaximumSize(new Dimension(Integer.MAX_VALUE,45));main.add(choose);main.add(Box.createVerticalStrut(15));
-        JPanel actions=new JPanel(new FlowLayout(FlowLayout.LEFT,10,0));actions.setOpaque(false);
-        actions.add(DesktopApp.button(I18n.t("连接库","Connection library"),()->new ConnectionLibrary(this)));
+        // BoxLayout, not FlowLayout: the first button starts exactly under the field above.
+        JPanel actions=new JPanel();actions.setLayout(new BoxLayout(actions,BoxLayout.X_AXIS));actions.setOpaque(false);
+        actions.add(DesktopApp.button(I18n.t("连接库","Connection library"),()->new ConnectionLibrary(this)));actions.add(Box.createHorizontalStrut(10));
         actions.add(DesktopApp.button(I18n.t("新建 SSH 配置","New SSH profile"),()->app.edit(owner,null)));
         main.add(actions);main.add(Box.createVerticalGlue());
         JLabel hint=new JLabel(I18n.t("Ctrl+Shift+L 打开连接库  ·  Ctrl+N 新建配置","Ctrl+Shift+L opens connections  ·  Ctrl+N adds a profile"));hint.setFont(DesktopFonts.ui().deriveFont(11.5f));hint.setForeground(Theme.FAINT);main.add(hint);
@@ -113,8 +114,8 @@ final class Workspace {
         launcher.add(main,BorderLayout.CENTER);
 
         JPanel saved=new JPanel(new BorderLayout(0,13));saved.setPreferredSize(new Dimension(330,410));saved.setBackground(Theme.SURFACE);
-        saved.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(Theme.LINE),new EmptyBorder(20,20,16,20)));
-        JLabel recent=new JLabel(I18n.t("已保存的连接","SAVED CONNECTIONS"));recent.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,11));recent.setForeground(Theme.MUTED);saved.add(recent,BorderLayout.NORTH);
+        saved.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(Theme.LINE),new EmptyBorder(20,5,16,20)));
+        JLabel recent=new JLabel(I18n.t("已保存的连接","SAVED CONNECTIONS"));recent.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,11));recent.setForeground(Theme.MUTED);recent.setBorder(new EmptyBorder(0,15,0,0));saved.add(recent,BorderLayout.NORTH);
         JList<Profile> profiles=new JList<>(app.accounts);profiles.setName("welcome-connections");profiles.setFixedCellHeight(68);profiles.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         profiles.setCellRenderer((list,profile,index,selected,focus)->{
             JPanel row=new JPanel(new GridLayout(2,1,0,2));row.setBackground(selected?Theme.TINT:Theme.SURFACE);
@@ -126,7 +127,7 @@ final class Workspace {
         profiles.addMouseListener(new MouseAdapter(){@Override public void mouseClicked(MouseEvent e){if(e.getClickCount()==2&&SwingUtilities.isLeftMouseButton(e))open(profiles.getSelectedValue());}});
         profiles.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER,0),"connect");profiles.getActionMap().put("connect",new AbstractAction(){public void actionPerformed(ActionEvent e){open(profiles.getSelectedValue());}});
         JScrollPane savedScroll=new EditorScrollPane(profiles);savedScroll.setBorder(null);saved.add(savedScroll,BorderLayout.CENTER);
-        JLabel savedHint=new JLabel(I18n.t("双击连接 · 更多配置在连接库中","Double-click to connect · manage in library"));savedHint.setForeground(Theme.FAINT);savedHint.setFont(DesktopFonts.ui().deriveFont(11));saved.add(savedHint,BorderLayout.SOUTH);
+        JLabel savedHint=new JLabel(I18n.t("双击连接 · 更多配置在连接库中","Double-click to connect · manage in library"));savedHint.setForeground(Theme.FAINT);savedHint.setFont(DesktopFonts.ui().deriveFont(11));savedHint.setBorder(new EmptyBorder(0,15,0,0));saved.add(savedHint,BorderLayout.SOUTH);
         launcher.add(saved,BorderLayout.EAST);background.add(launcher);return background;
     }
     void syncAccounts(){if(owner!=null&&!owner.isDisplayable()&&!app.windows.contains(owner))return;syncing=true;try{quick.removeAllItems();app.profiles().forEach(quick::addItem);Profile chosen=app.profiles().stream().filter(p->p.id().equals(selectedId)).findFirst().orElse(app.accounts.isEmpty()?null:app.accounts.firstElement());if(chosen!=null){quick.setSelectedItem(chosen);selectedId=chosen.id();}}finally{syncing=false;}updateActions();}

@@ -46,6 +46,11 @@ class BackgroundSessionsTest {
             Result prepared=run(BackgroundSessions.prepareCommand(name));
             BackgroundSessions.Prepared first=BackgroundSessions.parsePrepared(prepared.out());
             assertNotNull(first.pipe(),prepared.out());assertTrue(first.recordings().isEmpty());
+            assertEquals(1,run("tmux has-session -t ="+name).exitCode(),"preparing never starts a tmux server itself");
+            // The terminal channel creates the session (tmux new-session -A); recording waits for it.
+            Process attach=start("sleep 0.5; tmux new-session -d -s "+name);
+            assertTrue(run(BackgroundSessions.recordCommand(name,first.pipe())).out().contains("recording"));
+            attach.waitFor(10,TimeUnit.SECONDS);
             run("tmux send-keys -t ="+name+": 'echo marker-$((6*7))' Enter");
             assertTrue(waitFor(Path.of(first.pipe()),"marker-42"),"pipe-pane output is recorded");
             assertEquals(List.of(name),BackgroundSessions.parseList(run(BackgroundSessions.listCommand()).out()).stream().map(BackgroundSessions.Session::name).filter(name::equals).toList());
@@ -63,6 +68,11 @@ class BackgroundSessionsTest {
         return false;
     }
     private record Result(int exitCode,String out){}
+    private Process start(String command)throws Exception{
+        ProcessBuilder builder=new ProcessBuilder("sh","-c",command).redirectErrorStream(true);
+        builder.environment().put("HOME",dir.toString());builder.environment().put("TMUX_TMPDIR",dir.toString());builder.environment().remove("TMUX");
+        return builder.start();
+    }
     private Result run(String command)throws Exception{
         ProcessBuilder builder=new ProcessBuilder("sh","-c",command).redirectErrorStream(true);
         builder.environment().put("HOME",dir.toString());builder.environment().put("TMUX_TMPDIR",dir.toString());builder.environment().remove("TMUX");

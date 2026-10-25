@@ -236,6 +236,8 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
     JScrollBar historyScrollBar(){return historyBar;}
 
     public SwingTerminal() {
+        // Breathing room around the text, painted in the terminal's own color.
+        surface.setBorder(BorderFactory.createMatteBorder(8,14,4,0,DEFAULT_BACKGROUND));
         surface.add(this,BorderLayout.CENTER);surface.add(historyBar,BorderLayout.EAST);historyBar.setToolTipText(I18n.t("本地长期历史 · Shift+滚轮 / Shift+PageUp · Ctrl+End 回到当前应用画面","Local long-term history · Shift+wheel / Shift+PageUp · Ctrl+End returns to the live screen"));
         historyBar.addAdjustmentListener(e->{if(!adjustingBar&&history!=null){long count=history.count();int range=historyBar.getMaximum()-historyBar.getVisibleAmount();showHistory(range<=0?count:Math.round(e.getValue()*(double)count/range));}});
         addMouseWheelListener(e->{

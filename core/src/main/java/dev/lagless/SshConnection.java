@@ -148,7 +148,9 @@ public final class SshConnection implements AutoCloseable {
             if (!resumeId.matches("[A-Za-z0-9_-]{1,80}")) throw new IllegalArgumentException("Invalid resume ID");
             ChannelExec ch = (ChannelExec) session.openChannel("exec");
             ch.setPtyType(term, cols, rows, 0, 0); ch.setPty(true);
-            ch.setCommand("if command -v tmux >/dev/null 2>&1; then exec tmux -u new-session -A -s " + resumeId
+            // tmux refuses to start when the server lacks this terminal's description.
+            ch.setCommand("command -v tput >/dev/null 2>&1 && ! tput -T\"$TERM\" clear >/dev/null 2>&1 && export TERM=xterm; "
+                    + "if command -v tmux >/dev/null 2>&1; then exec tmux -u new-session -A -s " + resumeId
                     + "; else printf '\\r\\n[lagless] tmux unavailable; reconnect starts a NEW shell.\\r\\n'; exec \"${SHELL:-/bin/sh}\" -l; fi");
             shell = ch;
         }

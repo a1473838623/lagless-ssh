@@ -19,6 +19,7 @@ public final class GalleryCapture {
     private GalleryCapture() {}
 
     public static void main(String[] args) throws Exception {
+        DesktopRuntime.bootstrap(); // same font and text-smoothing settings as the app
         Path output = Path.of(args.length == 0 ? "docs/media" : args[0]);
         dev.lagless.I18n.setLanguage(dev.lagless.I18n.Language.parse(System.getProperty("lagless.language", "zh")));
         Files.createDirectories(output);
@@ -147,6 +148,8 @@ public final class GalleryCapture {
         layout(root); layout(root); layout(root);
         BufferedImage image = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB);
         Graphics2D graphics = image.createGraphics();
+        // Paint text with the hints its layout was measured with, or labels clip.
+        DesktopFonts.textHints(graphics);
         root.printAll(graphics);
         graphics.dispose();
         return image;

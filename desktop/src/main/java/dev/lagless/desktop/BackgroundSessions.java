@@ -81,16 +81,26 @@ final class BackgroundSessions {
         if(base.isEmpty()||base.length()>40)base="lagless";
         return base+"-"+now.format(DateTimeFormatter.ofPattern("MMdd-HHmm"));
     }
-    /** Creates the session when missing and starts a fresh recording; earlier recordings are listed for import. */
+    /**
+     * Picks the next recording file and lists earlier ones for import. It does
+     * not touch tmux: the session is created by the terminal channel itself,
+     * as when a user types tmux, because a server started from a command
+     * channel without a terminal can be cleaned up with that channel on some
+     * systemd servers ("server exited unexpectedly").
+     */
     static String prepareCommand(String name){
         String dir="\"$HOME/"+FOLDER+"/"+name+"\"";
         return "command -v tmux >/dev/null 2>&1 || { echo no-tmux; exit 0; }; "+
                 "mkdir -p "+dir+" && chmod 700 \"$HOME/"+FOLDER+"\" "+dir+"; "+
-                "tmux has-session -t ="+name+" 2>/dev/null || tmux new-session -d -s "+name+" || { echo failed; exit 0; }; "+
-                "tmux set-option -t ="+name+" @lagless 1 >/dev/null 2>&1; "+
-                "n="+dir.substring(0,dir.length()-1)+"/$(date +%s)-$$.log\"; : > \"$n\"; "+
-                "tmux pipe-pane -t ="+name+": \"exec cat >> '$n'\" && echo \"pipe|$n\"; "+
+                "n="+dir.substring(0,dir.length()-1)+"/$(date +%s)-$$.log\"; echo \"pipe|$n\"; "+
                 "for f in "+dir+"/*.log; do [ -f \"$f\" ] && [ \"$f\" != \"$n\" ] && echo \"old|$f\"; done";
+    }
+    /** Once the attached terminal has created the session: mark it and record its output to {@code pipe}. */
+    static String recordCommand(String name,String pipe){
+        String file="'"+pipe.replace("'","")+"'";
+        return "i=0; until tmux has-session -t ="+name+" 2>/dev/null; do i=$((i+1)); [ $i -gt 100 ] && { echo missing; exit 0; }; sleep 0.1; done; "+
+                "tmux set-option -t ="+name+" @lagless 1 >/dev/null 2>&1; : >> "+file+"; "+
+                "tmux pipe-pane -t ="+name+": \"exec cat >> "+file+"\" && echo recording";
     }
     static Prepared parsePrepared(String output){
         String pipe=null;List<String> old=new ArrayList<>();
