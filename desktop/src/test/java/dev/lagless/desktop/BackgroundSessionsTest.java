@@ -39,6 +39,7 @@ class BackgroundSessionsTest {
         assertEquals(raw,Files.readString(log.resolveSibling(log.getFileName()+".vt")));
     }
     @Test void serverScriptsRecordDetachAndHandOverRecordings()throws Exception{
+        Assumptions.assumeFalse(System.getProperty("os.name", "").startsWith("Windows"),"tmux shell integration requires a POSIX host");
         Assumptions.assumeTrue(run("command -v tmux").exitCode()==0,"tmux not installed");
         String name="lagless-test-"+ProcessHandle.current().pid();
         try{

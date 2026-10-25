@@ -1,8 +1,8 @@
 # Release history
 
-The source commit history is preserved so existing clones, tags, and release checksums continue to resolve. This page groups the user-facing changes across the small release candidates. Detailed notes remain under [`docs/releases/`](docs/releases/).
+The public repository starts from a sanitized source snapshot; older releases remain in the private historical archive. This page groups the user-facing changes across the small release candidates. Detailed notes remain under [`docs/releases/`](docs/releases/).
 
-## 0.2 desktop preview — current: [v0.2.0-rc.8.13](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.13)
+## 0.2 desktop preview — current: [v0.2.0-rc.8.14](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.14)
 
 The 0.2 line is a **pre-release**. It adds a cross-platform desktop workspace while retaining the independent core and terminal-only edition. Recent release candidates focus on:
 
@@ -10,9 +10,11 @@ The 0.2 line is a **pre-release**. It adds a cross-platform desktop workspace wh
 - Windows GraalVM Native Image distribution, plus bundled-runtime desktop and terminal ZIPs for Windows, Linux, and macOS where published.
 - Rendering and input fixes for interactive programs, Chinese input, clipboard use, scrollback, and auxiliary views.
 - Optional AI assistant, output mirror, plugin support, encrypted backup/restore, update and rollback.
+- Improved full-screen input, Chinese preedit, wrapped-line copying, and English UI in [rc.8.14](docs/releases/0.2.0-rc.8.14.md).
+- Optional tmux-backed background sessions, which can import output produced while Lagless was closed, in rc.8.14.
 - Separation of ordinary terminal history, full SSH input/output history, and application logs in [rc.8.13](docs/releases/0.2.0-rc.8.13.md).
 
-For exact behavior and caveats, read the [desktop guide](docs/desktop.md) and the release's own notes. Release assets are tied to their tagged source commits; documentation-only changes after rc.8.13 do not imply a new binary build.
+For exact behavior and caveats, read the [desktop guide](docs/desktop.md) and the release's own notes. Release assets are tied to their tagged source commits; documentation-only changes after a tag do not imply a new binary build.
 
 ## 0.1 terminal line — historical
 
