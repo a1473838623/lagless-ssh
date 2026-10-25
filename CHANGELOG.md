@@ -10,7 +10,7 @@ The 0.2 line is a **pre-release**. It adds a cross-platform desktop workspace wh
 - Windows GraalVM Native Image distribution, plus bundled-runtime desktop and terminal ZIPs for Windows, Linux, and macOS where published.
 - Rendering and input fixes for interactive programs, Chinese input, clipboard use, scrollback, and auxiliary views.
 - Optional AI assistant, output mirror, plugin support, encrypted backup/restore, update and rollback.
-- Improved full-screen input, Chinese preedit, wrapped-line copying, English UI with a first-run language choice, and a reliable native first start in [rc.8.14](docs/releases/0.2.0-rc.8.14.md).
+- Improved full-screen input, Chinese preedit, wrapped-line copying, English UI with a first-run language choice, reliable native first start, and light/dark themes in [rc.8.14](docs/releases/0.2.0-rc.8.14.md).
 - Optional tmux-backed background sessions, which can import output produced while Lagless was closed, in rc.8.14.
 - Separation of ordinary terminal history, full SSH input/output history, and application logs in [rc.8.13](docs/releases/0.2.0-rc.8.13.md).
 
@@ -22,7 +22,8 @@ The 0.1 line introduced the terminal-first SSH experience: local command editing
 
 ## Release policy
 
-- New code and binaries get a new versioned release with checksums.
-- Small fixes are grouped into concise release notes instead of rewriting older tags or force-pushing `main`.
+- Normal feature releases get a new versioned release with checksums.
+- A severe defect in the current pre-release may be fixed in place: rebuild every asset from the latest source, move that release tag to the rebuilt commit, replace its assets and checksums, and record the correction in its notes. Existing downloads must be replaced manually when the application cannot start or cannot detect a same-version rebuild.
+- Do not force-push `main`; keep the source history intact.
 - The private historical archive keeps its original commits, tags, and binaries. The public repository starts from a sanitized snapshot and publishes the current preview assets; old tags are not recreated against unrelated source.
 - GitHub Actions are paused to limit usage. Release notes state which checks actually ran; a docs commit is not presented as a binary build.
