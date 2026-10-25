@@ -27,6 +27,7 @@ public final class GalleryCapture {
         new DesktopPreferences(temporary.resolve(".lagless")).set("renderer", "compat");
         DesktopApp[] appRef = new DesktopApp[1];
         SessionPane[] paneRef = new SessionPane[1];
+        JFrame[] frameRef = new JFrame[1];
         SwingUtilities.invokeAndWait(() -> {
             try {
                 DesktopApp.theme();
@@ -37,6 +38,8 @@ public final class GalleryCapture {
                 app.accounts.addElement(new Profile("demo-stage", "Staging · Singapore", "example.invalid", "ops", 2222, "", "", true, false));
                 app.accounts.addElement(new Profile("demo-lab", "Development · Local", "localhost", "dev", 22, "", "", true, false));
                 JPanel root = app.content(null);
+                JFrame frame = new JFrame("Lagless gallery preview");frameRef[0]=frame;
+                frame.setContentPane(root);frame.setSize(WIDTH, HEIGHT);frame.setFocusableWindowState(false);frame.setLocation(-10000,-10000);frame.setVisible(true);
                 root.setSize(WIDTH, HEIGHT);
                 paint(root, output.resolve("welcome.png"));
 
@@ -92,6 +95,7 @@ public final class GalleryCapture {
                 throw new RuntimeException(error);
             } finally {
                 if (paneRef[0] != null) paneRef[0].close();
+                if (frameRef[0] != null) frameRef[0].dispose();
                 if (appRef[0] != null) appRef[0].close();
             }
         });
@@ -189,29 +193,26 @@ public final class GalleryCapture {
         try {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            g.setPaint(new GradientPaint(0, 0, new Color(0x0d1424), 1280, 640, new Color(0x193a53)));
+            g.setPaint(new GradientPaint(0, 0, new Color(0x11151d), 1280, 640, new Color(0x24263b)));
             g.fillRect(0, 0, 1280, 640);
-            g.setColor(new Color(0x0b8f7d));
-            g.fillRoundRect(58, 66, 80, 80, 22, 22);
-            g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 57));
-            g.setColor(Color.WHITE);
-            g.drawString("L", 80, 126);
+            g.drawImage(DesktopApp.appIcon(80), 58, 66, null);
             g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 30));
+            g.setColor(new Color(0xf3f5fa));
             g.drawString("LAGLESS SSH", 160, 119);
             g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 54));
             g.drawString("SSH at your speed.", 58, 250);
-            g.setColor(new Color(0x9ad8cd));
+            g.setColor(new Color(0xb29fff));
             g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 25));
             g.drawString("Local command editing", 61, 317);
             g.drawString("on slow or unstable links.", 61, 352);
-            g.setColor(new Color(0xc7d7e6));
+            g.setColor(new Color(0xcbd3e0));
             g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 19));
             g.drawString("Standalone terminal core  •  Desktop workspace", 61, 566);
             BufferedImage screen = ImageIO.read(screenshot.toFile());
-            g.setColor(new Color(0x315568));
+            g.setColor(new Color(0x4c4373));
             g.fillRoundRect(620, 140, 622, 394, 18, 18);
             g.drawImage(screen, 631, 151, 600, 375, null);
-            g.setColor(new Color(0x8ba9b9));
+            g.setColor(new Color(0x9ba9bc));
             g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 13));
             g.drawString("Product UI · sample data", 1050, 552);
         } finally {

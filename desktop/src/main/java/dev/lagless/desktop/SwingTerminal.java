@@ -253,7 +253,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
         });
         setOpaque(true);setDoubleBuffered(true);
         setFont(DesktopFonts.monospace(16));
-        setBackground(new Color(0x0d1424)); setForeground(new Color(0xd7e2f2));
+        setBackground(DEFAULT_BACKGROUND); setForeground(DEFAULT_FOREGROUND);
         setFocusable(true); setFocusTraversalKeysEnabled(false); enableInputMethods(true);
         addKeyListener(new KeyAdapter() {
             @Override public void keyPressed(KeyEvent e) {
@@ -620,24 +620,25 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
             renderer.paint(g,this,frame,cellWidth,cellHeight,ascent,from,to,offset);
             if(!composition.isEmpty()&&followLive){
                 DesktopFonts.textHints(g);g.setFont(getFont());int col=frame.cursorColumn(),row=frame.cursorRow();
-                for(int i=0;i<composition.length();){int cp=composition.codePointAt(i),span=Math.max(1,org.jline.utils.WCWidth.wcwidth(cp));if(col+span>columns){col=0;row++;}g.setColor(new Color(0x23334b));g.fillRect(col*cellWidth,row*cellHeight,span*cellWidth,cellHeight);g.setColor(new Color(0xb5f0dc));g.drawString(new String(Character.toChars(cp)),col*cellWidth,row*cellHeight+ascent);g.drawLine(col*cellWidth,(row+1)*cellHeight-2,(col+span)*cellWidth-1,(row+1)*cellHeight-2);col+=span;i+=Character.charCount(cp);}
+                for(int i=0;i<composition.length();){int cp=composition.codePointAt(i),span=Math.max(1,org.jline.utils.WCWidth.wcwidth(cp));if(col+span>columns){col=0;row++;}g.setColor(new Color(0x3a3353));g.fillRect(col*cellWidth,row*cellHeight,span*cellWidth,cellHeight);g.setColor(new Color(0xece6ff));g.drawString(new String(Character.toChars(cp)),col*cellWidth,row*cellHeight+ascent);g.drawLine(col*cellWidth,(row+1)*cellHeight-2,(col+span)*cellWidth-1,(row+1)*cellHeight-2);col+=span;i+=Character.charCount(cp);}
             }
-            if(frame.cursorVisible()&&hasFocus()&&(cursorOn||!composition.isEmpty())){Point caret=composition.isEmpty()?new Point(frame.cursorColumn(),frame.cursorRow()):compositionCell();Rectangle cursor=cursorBounds(caret.x,caret.y,cellWidth,cellHeight,ascent,cursorCapHeight);g.setColor(new Color(0xb5d8d0));g.fillRect(cursor.x,cursor.y,cursor.width,cursor.height);}
-            if(!followLive){DesktopFonts.textHints(g);g.setColor(new Color(0x23334b));g.fillRect(Math.max(0,getWidth()-250),4,246,24);g.setColor(new Color(0xcbd5e1));g.setFont(DesktopFonts.ui().deriveFont(11f));g.drawString(I18n.t("历史视图 · Ctrl+End 回到最新","History view · Ctrl+End for latest"),Math.max(4,getWidth()-240),21);}
+            if(frame.cursorVisible()&&hasFocus()&&(cursorOn||!composition.isEmpty())){Point caret=composition.isEmpty()?new Point(frame.cursorColumn(),frame.cursorRow()):compositionCell();Rectangle cursor=cursorBounds(caret.x,caret.y,cellWidth,cellHeight,ascent,cursorCapHeight);g.setColor(new Color(0xc7b8ff));g.fillRect(cursor.x,cursor.y,cursor.width,cursor.height);}
+            if(!followLive){DesktopFonts.textHints(g);g.setColor(new Color(0x282d3b));g.fillRect(Math.max(0,getWidth()-250),4,246,24);g.setColor(new Color(0xd8dfec));g.setFont(DesktopFonts.ui().deriveFont(11f));g.drawString(I18n.t("历史视图 · Ctrl+End 回到最新","History view · Ctrl+End for latest"),Math.max(4,getWidth()-240),21);}
         }finally{g.dispose();}
     }
     String displayedText(){long count=history==null?0:history.count();synchronized(screen){StringBuilder text=new StringBuilder();for(int r=0;r<screen.rows();r++){StringBuilder row=new StringBuilder();for(int c=0;c<screen.cols();c++){int cp=visibleChar(r,c,count);if(cp>=0)row.appendCodePoint(cp);}text.append(row.toString().stripTrailing()).append('\n');}return text.toString();}}
-    private static final int[] PALETTE = {0x111827,0xf87171,0x6ee7b7,0xfbbf24,0x60a5fa,0xc084fc,0x67e8f9,0xd7e2f2,0x64748b,0xfca5a5,0xa7f3d0,0xfde68a,0x93c5fd,0xe9d5ff,0xa5f3fc,0xffffff};
+    private static final Color DEFAULT_FOREGROUND=new Color(0xe0e6f1),DEFAULT_BACKGROUND=new Color(0x11151d);
+    private static final int[] PALETTE = {0x111827,0xf87171,0x6ee7b7,0xfbbf24,0x60a5fa,0xc084fc,0x67e8f9,0xe0e6f1,0x64748b,0xfca5a5,0xa7f3d0,0xfde68a,0x93c5fd,0xe9d5ff,0xa5f3fc,0xffffff};
     static Color[] colors(String pen) {
-        Color fg = new Color(0xd7e2f2), bg = new Color(0x0d1424); boolean inverse = false;
+        Color fg = DEFAULT_FOREGROUND, bg = DEFAULT_BACKGROUND; boolean inverse = false;
         var matcher = SGR_PATTERN.matcher(pen);
         while (matcher.find()) {
             String[] parts = matcher.group(1).isEmpty() ? new String[]{"0"} : matcher.group(1).split(";",-1);
             for (int i=0;i<parts.length;i++) {
                 int n; try { n = Integer.parseInt(parts[i].isEmpty()?"0":parts[i]); } catch (NumberFormatException e) { continue; }
-                if (n == 0) { fg = new Color(0xd7e2f2); bg = new Color(0x0d1424); inverse = false; }
+                if (n == 0) { fg = DEFAULT_FOREGROUND; bg = DEFAULT_BACKGROUND; inverse = false; }
                 else if (n == 7) inverse = true; else if (n == 27) inverse = false;
-                else if (n == 39) fg = new Color(0xd7e2f2); else if (n == 49) bg = new Color(0x0d1424);
+                else if (n == 39) fg = DEFAULT_FOREGROUND; else if (n == 49) bg = DEFAULT_BACKGROUND;
                 else if ((n >= 30 && n <= 37) || (n >= 90 && n <= 97)) fg = new Color(PALETTE[n >= 90 ? n-90+8 : n-30]);
                 else if ((n >= 40 && n <= 47) || (n >= 100 && n <= 107)) bg = new Color(PALETTE[n >= 100 ? n-100+8 : n-40]);
                 else if ((n == 38 || n == 48) && i+2 < parts.length) {

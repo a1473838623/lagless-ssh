@@ -53,13 +53,18 @@ foreach($size in $sizes){
             $path.AddArc($edge+$span-$radius*2,$edge,$radius*2,$radius*2,270,90)
             $path.AddArc($edge+$span-$radius*2,$edge+$span-$radius*2,$radius*2,$radius*2,0,90)
             $path.AddArc($edge,$edge+$span-$radius*2,$radius*2,$radius*2,90,90);$path.CloseFigure()
-            $brush=[System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(8,127,112))
+        $brush=[System.Drawing.Drawing2D.LinearGradientBrush]::new([System.Drawing.PointF]::new(0,0),[System.Drawing.PointF]::new($size,$size),[System.Drawing.Color]::FromArgb(41,38,63),[System.Drawing.Color]::FromArgb(22,27,39))
             try{$graphics.FillPath($brush,$path)}finally{$brush.Dispose()}
         }finally{$path.Dispose()}
-        $font=[System.Drawing.Font]::new('Segoe UI',[Math]::Max(8,$size*0.67),[System.Drawing.FontStyle]::Bold,[System.Drawing.GraphicsUnit]::Pixel)
-        $white=[System.Drawing.SolidBrush]::new([System.Drawing.Color]::White)
-        $center=[System.Drawing.StringFormat]::new();$center.Alignment=[System.Drawing.StringAlignment]::Center;$center.LineAlignment=[System.Drawing.StringAlignment]::Center
-        try{$graphics.DrawString('L',$font,$white,[System.Drawing.RectangleF]::new(0,-$size*0.035,$size,$size),$center)}finally{$font.Dispose();$white.Dispose();$center.Dispose()}
+        $stroke=[Math]::Max(1.5,$size*0.085)
+        $violet=[System.Drawing.Pen]::new([System.Drawing.Color]::FromArgb(169,147,255),$stroke)
+        $light=[System.Drawing.Pen]::new([System.Drawing.Color]::FromArgb(240,236,255),$stroke)
+        try{
+            foreach($pen in @($violet,$light)){$pen.StartCap=[System.Drawing.Drawing2D.LineCap]::Round;$pen.EndCap=[System.Drawing.Drawing2D.LineCap]::Round;$pen.LineJoin=[System.Drawing.Drawing2D.LineJoin]::Round}
+            $graphics.DrawLine($violet,$size*7/32,$size*9/32,$size*14/32,$size/2)
+            $graphics.DrawLine($violet,$size*14/32,$size/2,$size*7/32,$size*23/32)
+            $graphics.DrawLine($light,$size*17/32,$size*23/32,$size*25/32,$size*23/32)
+        }finally{$violet.Dispose();$light.Dispose()}
         $stream=[IO.MemoryStream]::new();try{$bitmap.Save($stream,[System.Drawing.Imaging.ImageFormat]::Png);$images.Add($stream.ToArray())}finally{$stream.Dispose()}
     }finally{$graphics.Dispose();$bitmap.Dispose()}
 }

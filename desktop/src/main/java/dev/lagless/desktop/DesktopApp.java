@@ -103,9 +103,10 @@ public final class DesktopApp implements AutoCloseable {
         Graphics2D graphics=icon.createGraphics();
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
         graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        graphics.setPaint(new GradientPaint(0,0,new Color(0x14b8a6),size,size,new Color(0x0f766e)));graphics.fillRoundRect(0,0,size,size,size*9/32,size*9/32);
-        graphics.setColor(Color.WHITE);graphics.setFont(new Font(Font.SANS_SERIF,Font.BOLD,size*23/32));
-        FontMetrics metrics=graphics.getFontMetrics();graphics.drawString("L",(size-metrics.stringWidth("L"))/2,(size-metrics.getHeight())/2+metrics.getAscent());
+        graphics.setPaint(new GradientPaint(0,0,new Color(0x29263f),size,size,new Color(0x161b27)));graphics.fillRoundRect(0,0,size,size,size/4,size/4);
+        graphics.setColor(new Color(0xa993ff));graphics.setStroke(new BasicStroke(Math.max(2f,size*.085f),BasicStroke.CAP_ROUND,BasicStroke.JOIN_ROUND));
+        graphics.drawLine(size*7/32,size*9/32,size*14/32,size/2);graphics.drawLine(size*14/32,size/2,size*7/32,size*23/32);
+        graphics.setColor(new Color(0xf0ecff));graphics.drawLine(size*17/32,size*23/32,size*25/32,size*23/32);
         graphics.dispose();return icon;
     }
     static Window ownerWindow(Component component){return component instanceof Window window?window:SwingUtilities.getWindowAncestor(component);}

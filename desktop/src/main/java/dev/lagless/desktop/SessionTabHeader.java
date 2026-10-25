@@ -6,9 +6,8 @@ import java.awt.*;
 import java.awt.event.*;
 
 /**
- * Pill-shaped tab: the selected tab is a raised surface, others are plain
- * text that lights up on hover. No underline. Session tabs carry a small
- * accent dot; the explicit hit target keeps selection reliable.
+ * Flat workspace tab. The active surface is distinguished by its background
+ * and label weight, without an accent rule above or below the title.
  */
 final class SessionTabHeader extends JPanel {
     private final JLabel title;
@@ -17,8 +16,8 @@ final class SessionTabHeader extends JPanel {
     private boolean selected,hover;
     SessionTabHeader(JTabbedPane tabs,String text,Runnable closeAction){
         super(new BorderLayout(8,0));setOpaque(false);session=closeAction!=null;
-        setBorder(BorderFactory.createEmptyBorder(6,session?24:14,6,session?6:14));
-        title=new JLabel(text);title.setFont(DesktopFonts.ui().deriveFont(Font.PLAIN,13));add(title,BorderLayout.CENTER);
+        setBorder(BorderFactory.createEmptyBorder(8,session?27:14,6,session?8:14));
+        title=new JLabel(text);if(!session){title.setIcon(UiIcons.HOME);title.setIconTextGap(8);}title.setFont(DesktopFonts.ui().deriveFont(Font.PLAIN,13));add(title,BorderLayout.CENTER);
         close=closeAction==null?null:UiIcons.closeButton(I18n.t("关闭","Close ")+text,closeAction);
         if(close!=null){close.setBorder(BorderFactory.createEmptyBorder(1,1,1,1));add(close,BorderLayout.EAST);}
         setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));getAccessibleContext().setAccessibleName(text);
@@ -40,13 +39,12 @@ final class SessionTabHeader extends JPanel {
     @Override protected void paintComponent(Graphics graphics){
         Graphics2D g=(Graphics2D)graphics.create();try{
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
-            int w=getWidth()-1,h=getHeight()-1,arc=14;
+            int w=getWidth()-1,h=getHeight()-1;
             if(selected){
-                g.setColor(Theme.shadow(3));g.fillRoundRect(0,2,w,h-1,arc,arc);
-                g.setColor(Theme.SURFACE);g.fillRoundRect(0,0,w,h-1,arc,arc);
-                g.setColor(Theme.LINE);g.drawRoundRect(0,0,w,h-1,arc,arc);
-            }else if(hover){g.setColor(Theme.HOVER);g.fillRoundRect(0,0,w,h-1,arc,arc);}
-            if(session){g.setColor(selected?Theme.ACCENT:Theme.FAINT);int d=7;g.fillOval(12,(h-d)/2,d,d);}
+                g.setColor(Theme.SURFACE);g.fillRoundRect(0,3,w,h+8,10,10);
+                g.setColor(Theme.LINE);g.drawLine(0,6,0,h);g.drawLine(w,6,w,h);
+            }else if(hover){g.setColor(Theme.HOVER);g.fillRoundRect(0,4,w,h+7,8,8);}
+            if(session){g.setColor(selected?Theme.ACCENT:Theme.FAINT);int d=7;g.fillOval(12,(h-d)/2+1,d,d);}
         }finally{g.dispose();}
     }
 }

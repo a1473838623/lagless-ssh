@@ -79,7 +79,7 @@ final class TerminalRenderer implements AutoCloseable {
             g.setColor(pair[1]);g.fillRect(c*cellWidth,row*cellHeight,(end-c)*cellWidth,cellHeight);
             if(intersects(from,to,base+c,base+end)){
                 int lo=Math.max(base+c,Math.min(from,to)),hi=Math.min(base+end-1,Math.max(from,to));
-                g.setColor(new Color(0x345170));g.fillRect((lo-base)*cellWidth,row*cellHeight,(hi-lo+1)*cellWidth,cellHeight);
+                g.setColor(new Color(0x4c466f));g.fillRect((lo-base)*cellWidth,row*cellHeight,(hi-lo+1)*cellWidth,cellHeight);
             }
             g.setColor(pair[0]);
             for(int at=c;at<end;){

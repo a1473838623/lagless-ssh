@@ -11,6 +11,7 @@ final class UiIcons {
     /** Same size as CLOSE, draws nothing: keeps a hidden close button's hit target. */
     static final Icon BLANK=new Icon(){public int getIconWidth(){return 18;}public int getIconHeight(){return 18;}public void paintIcon(Component c,Graphics g,int x,int y){}};
     static final Icon SUN=new ThemeGlyph(false),MOON=new ThemeGlyph(true);
+    static final Icon PLUS=new WorkspaceGlyph(false),HOME=new WorkspaceGlyph(true);
     static final Icon CHEVRON_DOWN=new ChevronDown();
     static Icon file(boolean folder,boolean link){return new Drawing(folder,link,false);}
     static JButton closeButton(String description,Runnable action){
@@ -21,6 +22,17 @@ final class UiIcons {
         public int getIconWidth(){return 14;}public int getIconHeight(){return 14;}
         public void paintIcon(Component component,Graphics graphics,int x,int y){
             Graphics2D g=(Graphics2D)graphics.create();try{g.translate(x,y);g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);g.setStroke(new BasicStroke(1.8f,BasicStroke.CAP_ROUND,BasicStroke.JOIN_ROUND));g.setColor(component.getForeground());g.drawLine(3,5,7,9);g.drawLine(7,9,11,5);}finally{g.dispose();}
+        }
+    }
+    private record WorkspaceGlyph(boolean home) implements Icon {
+        public int getIconWidth(){return 18;}public int getIconHeight(){return 18;}
+        public void paintIcon(Component component,Graphics graphics,int x,int y){
+            Graphics2D g=(Graphics2D)graphics.create();try{
+                g.translate(x,y);g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
+                g.setStroke(new BasicStroke(1.8f,BasicStroke.CAP_ROUND,BasicStroke.JOIN_ROUND));g.setColor(component.getForeground());
+                if(home){g.drawLine(3,9,9,4);g.drawLine(9,4,15,9);g.drawLine(5,8,5,15);g.drawLine(5,15,13,15);g.drawLine(13,15,13,8);}
+                else{g.drawLine(9,3,9,15);g.drawLine(3,9,15,9);}
+            }finally{g.dispose();}
         }
     }
     /** Sun or moon for the theme switch, drawn in the component's foreground. */

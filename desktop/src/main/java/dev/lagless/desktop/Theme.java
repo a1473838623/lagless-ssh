@@ -36,19 +36,21 @@ final class Theme {
     record Palette(boolean dark,int canvas,int surface,int raised,int hover,int line,int border,int ink,int text,int muted,int faint,
                    int accent,int accentHover,int accentPressed,int onAccent,int tint,int selection,int focus,int tooltip,int tooltipText,int shadow,int shadowAlpha){}
 
+    // A quiet terminal frame: graphite surfaces, restrained violet actions,
+    // and enough contrast to read controls without competing with SSH output.
     static final Palette LIGHT=new Palette(false,
-            0xf3f5f9,0xffffff,0xffffff,0xeef1f6,0xe4e8ef,0xd3dae4,
-            0x0f172a,0x334155,0x64748b,0x94a3b8,
-            0x0d9488,0x0f766e,0x115e59,0xffffff,0xe6f6f3,0xccefe9,0x99e0d4,
-            0x1e293b,0xf1f5f9,0x0f172a,6);
+            0xe9edf4,0xf7f8fb,0xffffff,0xe7eaf2,0xd7deea,0xc4cede,
+            0x1b2434,0x3c495f,0x69768b,0x929caf,
+            0x5d4bd8,0x4b39c2,0x3c2d9f,0xffffff,0xeae6fb,0xded8ff,0x8b79e8,
+            0x202536,0xf5f6fb,0x101727,5);
     static final Palette DARK=new Palette(true,
-            0x0a0f1a,0x111827,0x18212f,0x1d2738,0x1f2937,0x2c3a4f,
-            0xe8edf4,0xc4cdd9,0x8d99ab,0x5d6b80,
-            0x2dd4bf,0x5eead4,0x14b8a6,0x042f2e,0x0f2f2c,0x14504a,0x1f7a70,
-            0x2a3548,0xf1f5f9,0x000000,22);
+            0x11151d,0x1a202b,0x252d3a,0x303a4b,0x303949,0x465267,
+            0xf3f5fa,0xd0d8e5,0x9ba9bc,0x718198,
+            0x9a83f5,0xb29fff,0x806bd2,0x171323,0x322c49,0x4c4373,0xaf9dff,
+            0xe7eaf2,0x171b25,0x000000,18);
 
-    private static volatile Palette current=LIGHT;
-    private static Mode mode=Mode.SYSTEM;
+    private static volatile Palette current=DARK;
+    private static Mode mode=Mode.DARK;
     private static final List<Runnable> listeners=new CopyOnWriteArrayList<>();
 
     static Palette palette(){return current;}
@@ -84,7 +86,7 @@ final class Theme {
     static Mode saved(Path home){
         String forced=System.getProperty("lagless.theme");
         if(forced!=null)return Mode.parse(forced);
-        try{return Mode.parse(new DesktopPreferences(home).get(KEY,"system"));}catch(Exception e){return Mode.SYSTEM;}
+        try{return Mode.parse(new DesktopPreferences(home).get(KEY,"dark"));}catch(Exception e){return Mode.DARK;}
     }
     static Palette resolve(Mode mode){return switch(mode){case LIGHT->LIGHT;case DARK->DARK;case SYSTEM->systemDark()?DARK:LIGHT;};}
 
@@ -120,15 +122,15 @@ final class Theme {
         UIManager.put("Lagless.accent",c(p.accent()));UIManager.put("Lagless.accentHover",c(p.accentHover()));UIManager.put("Lagless.accentPressed",c(p.accentPressed()));
         UIManager.put("Lagless.onAccent",c(p.onAccent()));UIManager.put("Lagless.tint",c(p.tint()));UIManager.put("Lagless.ink",c(p.ink()));
         UIManager.put("Lagless.surface",c(p.surface()));UIManager.put("Lagless.hover",c(p.hover()));UIManager.put("Lagless.line",c(p.line()));UIManager.put("Lagless.border",c(p.border()));
-        UIManager.put("Component.arc",10);UIManager.put("Button.arc",10);UIManager.put("TextComponent.arc",10);UIManager.put("CheckBox.arc",6);UIManager.put("ProgressBar.arc",999);
+        UIManager.put("Component.arc",6);UIManager.put("Button.arc",6);UIManager.put("TextComponent.arc",6);UIManager.put("CheckBox.arc",4);UIManager.put("ProgressBar.arc",6);
         UIManager.put("Component.focusWidth",1);UIManager.put("Component.innerFocusWidth",0);UIManager.put("Component.focusColor",c(p.focus()));UIManager.put("Component.focusedBorderColor",c(p.accent()));
         UIManager.put("Component.borderColor",c(p.border()));UIManager.put("Component.disabledBorderColor",c(p.line()));
         UIManager.put("Panel.background",c(p.canvas()));UIManager.put("OptionPane.background",c(p.surface()));UIManager.put("RootPane.background",c(p.canvas()));
         UIManager.put("Label.foreground",c(p.ink()));UIManager.put("Label.disabledForeground",c(p.faint()));
-        // Tabs: no underline and no content separator; the tab headers paint their own pills.
-        UIManager.put("TabbedPane.tabHeight",40);UIManager.put("TabbedPane.showTabSeparators",false);UIManager.put("TabbedPane.tabType","underlined");
+        // The tab headers paint flat workspace tabs, integrated with the canvas.
+        UIManager.put("TabbedPane.tabHeight",43);UIManager.put("TabbedPane.showTabSeparators",false);UIManager.put("TabbedPane.tabType","card");
         UIManager.put("TabbedPane.tabSelectionHeight",0);UIManager.put("TabbedPane.contentSeparatorHeight",0);UIManager.put("TabbedPane.tabInsets",new Insets(4,3,4,3));
-        UIManager.put("TabbedPane.tabAreaInsets",new Insets(4,8,4,8));UIManager.put("TabbedPane.contentBorderInsets",new Insets(0,0,0,0));
+        UIManager.put("TabbedPane.tabAreaInsets",new Insets(0,8,0,8));UIManager.put("TabbedPane.contentBorderInsets",new Insets(0,0,0,0));
         for(String key:new String[]{"background","selectedBackground","hoverColor","focusColor","contentAreaColor","underlineColor","inactiveUnderlineColor","disabledUnderlineColor"})
             UIManager.put("TabbedPane."+key,c(p.canvas()));
         UIManager.put("TabbedPane.selectedForeground",c(p.ink()));UIManager.put("TabbedPane.foreground",c(p.text()));UIManager.put("TabbedPane.buttonHoverBackground",c(p.hover()));
@@ -146,7 +148,7 @@ final class Theme {
         UIManager.put("Button.toolbar.hoverBackground",c(p.hover()));UIManager.put("Button.toolbar.pressedBackground",c(p.line()));
         UIManager.put("Button.default.background",c(p.accent()));UIManager.put("Button.default.foreground",c(p.onAccent()));UIManager.put("Button.default.borderColor",c(p.accent()));
         UIManager.put("Button.default.hoverBackground",c(p.accentHover()));UIManager.put("Button.default.pressedBackground",c(p.accentPressed()));UIManager.put("Button.default.focusedBackground",c(p.accent()));UIManager.put("Button.default.boldText",true);
-        UIManager.put("Button.margin",new Insets(5,14,5,14));
+        UIManager.put("Button.margin",new Insets(6,13,6,13));
         UIManager.put("ToggleButton.selectedBackground",c(p.tint()));UIManager.put("ToggleButton.selectedForeground",c(p.ink()));
         for(String text:new String[]{"TextField","TextArea","TextPane","EditorPane","PasswordField","FormattedTextField","ComboBox","Spinner"}){
             UIManager.put(text+".background",c(p.raised()));UIManager.put(text+".selectionBackground",c(p.selection()));UIManager.put(text+".selectionForeground",c(p.ink()));

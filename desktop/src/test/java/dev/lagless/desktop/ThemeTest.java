@@ -24,15 +24,15 @@ class ThemeTest {
             assertEquals(Theme.DARK.accent(),primary.getBackground().getRGB()&0xffffff,"FlatLaf styles resolve $Lagless.* again");
             assertEquals(Theme.DARK.muted(),muted.getForeground().getRGB()&0xffffff,"an explicitly set token changes without rebuilding");
             assertEquals(Theme.DARK.canvas(),UIManager.getColor("Panel.background").getRGB()&0xffffff);
-            assertEquals("#2dd4bf",Theme.hex(Theme.ACCENT));
+            assertEquals("#9a83f5",Theme.hex(Theme.ACCENT));
         });
     }
     @Test void savedModeComesFromPreferences()throws Exception{
-        assertEquals(Theme.Mode.SYSTEM,Theme.saved(dir));
+        assertEquals(Theme.Mode.DARK,Theme.saved(dir));
         new DesktopPreferences(dir).set(Theme.KEY,"dark");assertEquals(Theme.Mode.DARK,Theme.saved(dir));
         assertEquals(Theme.Mode.SYSTEM,Theme.Mode.parse("nonsense"));
     }
-    @Test void selectedTabIsAPillWithoutAnUnderline()throws Exception{
+    @Test void selectedTabHasNoAccentRule()throws Exception{
         for(Theme.Mode mode:new Theme.Mode[]{Theme.Mode.LIGHT,Theme.Mode.DARK})SwingUtilities.invokeAndWait(()->{
             Theme.apply(mode);
             JTabbedPane tabs=new JTabbedPane();tabs.addTab("one",new JPanel());
@@ -43,13 +43,15 @@ class ThemeTest {
             int accent=Theme.ACCENT.getRGB()&0xffffff,accentPixels=0;
             for(int y=image.getHeight()-6;y<image.getHeight();y++)for(int x=0;x<image.getWidth();x++)if((image.getRGB(x,y)&0xffffff)==accent)accentPixels++;
             assertEquals(0,accentPixels,mode+": no accent line along the bottom of the selected tab");
-            assertEquals(Theme.palette().surface(),image.getRGB(4,image.getHeight()/2)&0xffffff,mode+": selected tab is a surface pill");
+            assertEquals(Theme.palette().surface(),image.getRGB(image.getWidth()/2,4)&0xffffff,mode+": no accent line along the top of the selected tab");
+            assertEquals(Theme.palette().surface(),image.getRGB(4,image.getHeight()/2)&0xffffff,mode+": selected tab merges with the content surface");
         });
     }
     @Test void menuSwitchSavesTheChoiceAndUpdatesTheToggle()throws Exception{
         DesktopApp[] app={null};
         try{SwingUtilities.invokeAndWait(()->{try{
             Theme.apply(Theme.Mode.LIGHT);app[0]=new DesktopApp(dir);JPanel root=app[0].content(null);
+            assertEquals(0,countBrandLabels(root),"the OS title bar is the only top-left Lagless brand");
             JButton toggle=find(root,JButton.class,"theme-toggle");assertNotNull(toggle);assertSame(UiIcons.MOON,toggle.getIcon());
             toggle.doClick();
             assertTrue(Theme.dark());assertEquals("dark",app[0].preferences.get(Theme.KEY,""));assertSame(UiIcons.SUN,toggle.getIcon());
@@ -64,5 +66,11 @@ class ThemeTest {
             if(child instanceof Container container){T found=find(container,type,name);if(found!=null)return found;}
         }
         return null;
+    }
+    private static int countBrandLabels(Container root){
+        int count=0;for(Component child:root.getComponents()){
+            if(child instanceof JLabel label&&"Lagless".equals(label.getText()))count++;
+            if(child instanceof Container nested)count+=countBrandLabels(nested);
+        }return count;
     }
 }

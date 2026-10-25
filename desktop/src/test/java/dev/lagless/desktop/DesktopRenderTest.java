@@ -22,7 +22,8 @@ class DesktopRenderTest {
                 pane.draft.setText("# 完全在本地编辑，网络中断也能保留\ngit status\nsystemctl status nginx\n");
                 pane.view.display("\u001b[32mConnected to Production · Tokyo\u001b[0m\r\n\r\ndeploy@tokyo:~$ git status\r\nOn branch main\r\nYour branch is up to date.\r\n\r\n\u001b[36mLocal editing ready · RTT does not affect typing\u001b[0m\r\ndeploy@tokyo:~$ ");
                 content.setSize(1440,900);layout(content);layout(content);layout(content);
-                assertNull(findList(content),"connection library should not occupy the workspace");assertSame(pane.draft.getDocument(),pane.inlineDraft.getDocument());assertFalse(pane.tools.isVisible());pane.setEditorPlacement("right");assertTrue(pane.tools.isVisible());assertEquals("本地命令",pane.tools.getTitleAt(0));assertTrue(pane.mirror.getLineWrap());
+                assertNotNull(findList((Container)tabs.getComponentAt(0)),"start page should show saved connections");
+                assertNull(findList(pane),"connection list should not occupy the terminal session");assertSame(pane.draft.getDocument(),pane.inlineDraft.getDocument());assertFalse(pane.tools.isVisible());pane.setEditorPlacement("right");assertTrue(pane.tools.isVisible());assertEquals("本地命令",pane.tools.getTitleAt(0));assertTrue(pane.mirror.getLineWrap());
                 pane.setEditorPlacement("right");layout(content);layout(content);assertTrue(pane.tools.getWidth()>100,"right editor has usable width: "+pane.tools.getBounds());
                 BufferedImage image=new BufferedImage(1440,900,BufferedImage.TYPE_INT_RGB);Graphics2D g=image.createGraphics();content.printAll(g);g.dispose();
                 Files.createDirectories(Path.of("target"));javax.imageio.ImageIO.write(image,"png",Path.of("target/desktop-preview.png").toFile());

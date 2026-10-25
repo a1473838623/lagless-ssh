@@ -68,7 +68,7 @@ public final class SessionPane extends JPanel implements AutoCloseable {
         this(app,profile,suppliedPrompter,null);
     }
     SessionPane(DesktopApp app, Profile profile, SshConnection.Prompter suppliedPrompter, String background) throws Exception {
-        super(new BorderLayout(0,8)); this.app=app;this.profile=profile;
+        super(new BorderLayout()); this.app=app;this.profile=profile;setBackground(Theme.CANVAS);
         if(background!=null&&!BackgroundSessions.NAME.matcher(background).matches())throw new IllegalArgumentException(I18n.t("后台会话名称无效","Invalid background session name"));
         this.background=background;
         tools.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);tools.addChangeListener(e->Workspace.updateTabHeaders(tools));
@@ -79,10 +79,10 @@ public final class SessionPane extends JPanel implements AutoCloseable {
         setRecordFullscreen(Boolean.parseBoolean(app.preferences.get("record-fullscreen","true")));
         view.setAutoRemoteWheel(Boolean.parseBoolean(app.preferences.get("wheel-auto-interactive","true")));
         view.setPageKeysForRemoteWheel(Boolean.parseBoolean(app.preferences.get("wheel-page-keys","false")));
-        setBorder(new EmptyBorder(8,8,8,8));
-        JPanel top=new JPanel(new BorderLayout());top.setBorder(new EmptyBorder(0,2,2,0));status.setForeground(Theme.ACCENT_HOVER);status.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,12.5f));top.add(status,BorderLayout.WEST);
+        setBorder(new EmptyBorder(0,0,0,0));
+        JPanel top=new JPanel(new BorderLayout());top.setBackground(Theme.SURFACE);top.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(0,0,1,0,Theme.LINE),new EmptyBorder(7,14,7,12)));status.setForeground(Theme.ACCENT);status.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,12));top.add(status,BorderLayout.WEST);
         JLabel target=new JLabel(profile.user()+"@"+profile.host()+(background==null?"":I18n.t(" · 后台会话 "," · background session ")+background));target.setForeground(DesktopApp.MUTED);
-        JButton backgroundButton=new JButton(background==null?I18n.t("后台会话…","Background sessions…"):I18n.t("其他后台会话…","Other background sessions…"));backgroundButton.setName("background-sessions-button");backgroundButton.setFocusable(false);backgroundButton.putClientProperty("JButton.buttonType","roundRect");
+        JButton backgroundButton=new JButton(background==null?I18n.t("后台会话…","Background sessions…"):I18n.t("其他后台会话…","Other background sessions…"));backgroundButton.setName("background-sessions-button");backgroundButton.setFocusable(false);backgroundButton.putClientProperty("JButton.buttonType","toolBarButton");backgroundButton.setForeground(Theme.TEXT);
         backgroundButton.setToolTipText(I18n.t("在服务器上运行可在关闭 Lagless 后继续的 shell，并在重新打开后重新连接","Run a shell on the server that keeps going after Lagless closes, and reconnect to it later"));
         backgroundButton.addActionListener(e->BackgroundSessions.show(this));
         JPanel topRight=new JPanel(new FlowLayout(FlowLayout.RIGHT,10,0));topRight.setOpaque(false);topRight.add(target);topRight.add(backgroundButton);top.add(topRight,BorderLayout.EAST);add(top,BorderLayout.NORTH);
@@ -96,12 +96,12 @@ public final class SessionPane extends JPanel implements AutoCloseable {
         JMenuBar mirrorBar=new JMenuBar();JMenu mirrorActions=new JMenu(I18n.t("镜像 · 操作","Mirror · Actions"));mirrorBar.add(mirrorActions);Workspace.add(mirrorActions,I18n.t("独立镜像窗","Separate mirror window"),()->detach(I18n.t("输出镜像 · 可编辑","Output mirror · editable"),mirror,false),null);Workspace.add(mirrorActions,I18n.t("翻译选区","Translate selection"),()->assist("translate"),null);
         JCheckBoxMenuItem wrap=new JCheckBoxMenuItem(I18n.t("自动换行","Wrap lines"),mirror.getLineWrap());wrap.addActionListener(e->{mirrorViews.forEach(v->v.setLineWrap(wrap.isSelected()));app.preferences.set("mirror-wrap",Boolean.toString(wrap.isSelected()));});mirrorActions.add(wrap);mirrored.add(mirrorBar,BorderLayout.NORTH);
         assistantChat=new AssistantChatPanel(this);assistantPanel.add(assistantChat,BorderLayout.CENTER);
-        JPanel terminalColumn=new JPanel(new BorderLayout());inlineDraft.setDocument(draft.getDocument());inlineDraft.setRows(1);inlineDraft.setMargin(new Insets(4,8,4,28));inlineDraft.setName("bottom-editor");inlineBar.setBorder(new EmptyBorder(6,8,6,8));
-        JLabel prompt=new JLabel(">");prompt.setForeground(DesktopApp.ACCENT);inlineBar.add(prompt,BorderLayout.WEST);
+        JPanel terminalColumn=new JPanel(new BorderLayout());terminalColumn.setBackground(Theme.CANVAS);inlineDraft.setDocument(draft.getDocument());inlineDraft.setRows(1);inlineDraft.setMargin(new Insets(4,8,4,28));inlineDraft.setName("bottom-editor");inlineBar.setBackground(Theme.SURFACE);inlineBar.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(1,0,0,0,Theme.LINE),new EmptyBorder(6,12,6,12)));
+        JLabel prompt=new JLabel("›");prompt.setFont(DesktopFonts.editor(17).deriveFont(Font.BOLD));prompt.setForeground(Theme.ACCENT);inlineBar.add(prompt,BorderLayout.WEST);
         inputArea=new BottomInputPane(view,inlineBar,inlineScroll);inlineBar.add(inputArea.editorSurface,BorderLayout.CENTER);
-        JPanel inlineActions=new JPanel(new BorderLayout());JLabel inlineHint=new JLabel(I18n.t("Enter 发送 · Shift+Enter 换行","Enter sends · Shift+Enter new line"));inlineHint.setForeground(DesktopApp.MUTED);inlineActions.add(inlineHint,BorderLayout.CENTER);inlineBar.add(inlineActions,BorderLayout.EAST);
+        JPanel inlineActions=new JPanel(new BorderLayout());inlineActions.setOpaque(false);JLabel inlineHint=new JLabel(I18n.t("Enter 发送 · Shift+Enter 换行","Enter sends · Shift+Enter new line"));inlineHint.setForeground(DesktopApp.MUTED);inlineHint.setFont(DesktopFonts.ui().deriveFont(11f));inlineActions.add(inlineHint,BorderLayout.CENTER);inlineBar.add(inlineActions,BorderLayout.EAST);
         terminalColumn.add(inputArea,BorderLayout.CENTER);
-        JPanel dockHeader=new JPanel(new BorderLayout());JLabel dockTitle=new JLabel(I18n.t("  辅助视图","  Side views"));dockTitle.setForeground(DesktopApp.MUTED);dockTitle.setFont(DesktopFonts.ui().deriveFont(11f));dockHeader.add(dockTitle,BorderLayout.WEST);dockHeader.add(UiIcons.closeButton(I18n.t("收起侧边视图","Hide side view"),this::hideTools),BorderLayout.EAST);toolDock.add(dockHeader,BorderLayout.NORTH);toolDock.add(tools,BorderLayout.CENTER);
+        JPanel dockHeader=new JPanel(new BorderLayout());dockHeader.setBackground(Theme.SURFACE);dockHeader.setBorder(new EmptyBorder(5,8,5,6));JLabel dockTitle=new JLabel(I18n.t("  辅助视图","  Side views"));dockTitle.setForeground(DesktopApp.MUTED);dockTitle.setFont(DesktopFonts.ui().deriveFont(11f));dockHeader.add(dockTitle,BorderLayout.WEST);dockHeader.add(UiIcons.closeButton(I18n.t("收起侧边视图","Hide side view"),this::hideTools),BorderLayout.EAST);toolDock.setBackground(Theme.SURFACE);toolDock.setBorder(BorderFactory.createMatteBorder(0,1,0,0,Theme.LINE));toolDock.add(dockHeader,BorderLayout.NORTH);toolDock.add(tools,BorderLayout.CENTER);
         split.setLeftComponent(terminalColumn);split.setRightComponent(toolDock);split.setResizeWeight(.70);split.setBorder(null);add(split,BorderLayout.CENTER);setEditorPlacement(app.preferences.get("editor-position","bottom"));
         message.setForeground(DesktopApp.MUTED);add(message,BorderLayout.SOUTH);
         view.setNotice(lastNotice::set);draft.getDocument().addDocumentListener(new DocumentListener(){public void insertUpdate(DocumentEvent e){draftDirty=true;}public void removeUpdate(DocumentEvent e){draftDirty=true;}public void changedUpdate(DocumentEvent e){draftDirty=true;}});

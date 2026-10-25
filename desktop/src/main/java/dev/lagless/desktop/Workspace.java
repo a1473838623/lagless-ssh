@@ -8,7 +8,7 @@ import java.awt.*;
 import java.awt.event.*;
 import java.util.*;
 
-/** A terminal-first window. Connection management is a transient library, not a sidebar. */
+/** A terminal-first workspace with a quiet chrome and an on-demand connection library. */
 final class Workspace {
     final DesktopApp app;final JFrame owner;final JPanel root=new JPanel(new BorderLayout());
     final JTabbedPane tabs=new JTabbedPane();final JComboBox<Profile> quick=new JComboBox<>();
@@ -22,7 +22,7 @@ final class Workspace {
     private final JButton themeButton=new JButton();
     private String selectedId="";private boolean syncing;
     Workspace(DesktopApp app,JFrame owner){
-        this.app=app;this.owner=owner;root.setName("workspace");root.add(menu(),BorderLayout.NORTH);tabs.setName("sessions");tabs.addTab(I18n.t("起始页","Start"),welcome());root.add(tabs,BorderLayout.CENTER);
+        this.app=app;this.owner=owner;root.setName("workspace");root.setBackground(Theme.CANVAS);root.add(menu(),BorderLayout.NORTH);tabs.setName("sessions");tabs.setBackground(Theme.CANVAS);tabs.addTab(I18n.t("起始页","Start"),welcome());root.add(tabs,BorderLayout.CENTER);
         tabs.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);tabs.setTabComponentAt(0,new SessionTabHeader(tabs,I18n.t("起始页","Start"),null));updateTabHeaders(tabs);
         root.add(statusBar(),BorderLayout.SOUTH);
         quick.setName("quick-connect");quick.addActionListener(e->{if(!syncing&&quick.getSelectedItem() instanceof Profile p)selectedId=p.id();updateActions();});tabs.addChangeListener(e->updateActions());
@@ -30,8 +30,9 @@ final class Workspace {
         app.accounts.addListDataListener(listener);if(owner!=null)owner.addWindowListener(new WindowAdapter(){public void windowClosed(WindowEvent e){app.accounts.removeListDataListener(listener);app.workspaces.remove(owner);}});syncAccounts();
     }
     private JMenuBar menu(){
-        JMenuBar bar=new JMenuBar();bar.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(0,0,1,0,Theme.LINE),new EmptyBorder(4,10,4,8)));
-        JLabel brand=new JLabel("Lagless",new ImageIcon(DesktopApp.appIcon(18)),SwingConstants.LEFT);brand.setIconTextGap(7);brand.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,13f));brand.setForeground(Theme.INK);brand.setBorder(new EmptyBorder(0,2,0,14));bar.add(brand);
+        // The native title bar already owns the app icon and name. Keep only
+        // commands here so the top-left corner never displays the brand twice.
+        JMenuBar bar=new JMenuBar();bar.setBackground(Theme.CANVAS);bar.setPreferredSize(new Dimension(1,46));bar.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(0,0,1,0,Theme.LINE),new EmptyBorder(4,10,4,10)));
         JMenu connections=new JMenu(I18n.t("连接","Connections"));bar.add(connections);
         add(connections,I18n.t("连接库","Connection library"),()->new ConnectionLibrary(this),KeyStroke.getKeyStroke(KeyEvent.VK_L,InputEvent.CTRL_DOWN_MASK|InputEvent.SHIFT_DOWN_MASK));
         add(connections,I18n.t("添加","Add"),()->app.edit(owner,null),KeyStroke.getKeyStroke(KeyEvent.VK_N,InputEvent.CTRL_DOWN_MASK));
@@ -67,6 +68,7 @@ final class Workspace {
         JMenu tools=new JMenu(I18n.t("工具","Tools"));bar.add(tools);add(tools,I18n.t("协作","Collaborate"),()->app.collaborate(owner),null);add(tools,I18n.t("AI 设置","AI settings"),()->app.assistantSettings(owner),null);add(tools,I18n.t("插件","Plugins"),()->app.pluginInfo(owner),null);tools.addSeparator();add(tools,I18n.t("备份 / 恢复","Backup / restore"),()->app.backupMenu(owner),null);add(tools,I18n.t("更新","Updates"),()->app.update(owner),null);
         JMenu about=new JMenu(I18n.t("关于","About"));bar.add(about);add(about,I18n.t("GitHub 项目","GitHub project"),()->app.openProject(owner),null);add(about,I18n.t("关于 Lagless","About Lagless"),()->app.about(owner),null);about.addSeparator();add(about,"Language / 语言…",()->LanguageDialog.change(owner,app.preferences),null);
         bar.add(Box.createHorizontalGlue());
+        JButton newSession=new JButton(UiIcons.PLUS);newSession.setName("new-session");newSession.setToolTipText(I18n.t("从连接库打开新会话","Open a new session from the connection library"));newSession.getAccessibleContext().setAccessibleName(newSession.getToolTipText());newSession.putClientProperty("JButton.buttonType","toolBarButton");newSession.setFocusable(false);newSession.setForeground(Theme.TEXT);newSession.addActionListener(e->new ConnectionLibrary(this));bar.add(newSession);
         // One click flips light and dark; View ▸ Theme also offers following the system.
         themeButton.setName("theme-toggle");themeButton.putClientProperty("JButton.buttonType","toolBarButton");themeButton.setFocusable(false);themeButton.setForeground(Theme.TEXT);
         themeButton.addActionListener(e->app.setTheme(Theme.dark()?Theme.Mode.LIGHT:Theme.Mode.DARK));bar.add(themeButton);syncTheme();
@@ -79,7 +81,7 @@ final class Workspace {
         themeButton.setToolTipText(Theme.dark()?I18n.t("切换到浅色主题","Switch to the light theme"):I18n.t("切换到深色主题","Switch to the dark theme"));
     }
     private JComponent statusBar(){
-        JPanel bar=new JPanel(new BorderLayout());bar.setBackground(Theme.SURFACE);bar.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(1,0,0,0,Theme.LINE),new EmptyBorder(4,12,4,12)));
+        JPanel bar=new JPanel(new BorderLayout());bar.setBackground(Theme.CANVAS);bar.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(1,0,0,0,Theme.LINE),new EmptyBorder(3,12,3,12)));
         JLabel left=new JLabel(I18n.t("本地优先  ·  输入不等待网络","Local first  ·  typing never waits for the network"),new StatusDot(),SwingConstants.LEFT);left.setIconTextGap(7);
         JLabel right=new JLabel("v"+dev.lagless.Installation.version());
         for(JLabel label:new JLabel[]{left,right}){label.setFont(DesktopFonts.ui().deriveFont(11.5f));label.setForeground(Theme.MUTED);}
@@ -90,30 +92,42 @@ final class Workspace {
         public void paintIcon(Component c,Graphics graphics,int x,int y){Graphics2D g=(Graphics2D)graphics.create();try{g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);g.setColor(Theme.ACCENT);g.fillOval(x,y,8,8);}finally{g.dispose();}}
     }
     private JPanel welcome(){
-        JPanel background=new JPanel(new GridBagLayout()){@Override protected void paintComponent(Graphics graphics){Graphics2D g=(Graphics2D)graphics.create();try{
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setColor(Theme.CANVAS);g.fillRect(0,0,getWidth(),getHeight());
-            // A soft accent glow behind the card; no image assets needed.
-            int r=Math.max(getWidth(),getHeight());Color glow=Theme.TINT;
-            g.setPaint(new RadialGradientPaint(new Point(getWidth()/2,getHeight()/3),r*0.6f,new float[]{0f,1f},new Color[]{glow,new Color(glow.getRed(),glow.getGreen(),glow.getBlue(),0)}));
-            g.fillRect(0,0,getWidth(),getHeight());
-        }finally{g.dispose();}}};
-        JPanel card=new RoundedCard();card.setLayout(new BoxLayout(card,BoxLayout.Y_AXIS));card.setBorder(new EmptyBorder(40,48,40,48));
-        JLabel logo=new JLabel(new ImageIcon(DesktopApp.appIcon(44)));card.add(logo);card.add(Box.createVerticalStrut(18));
-        JLabel eyebrow=new JLabel(I18n.t("准备就绪","READY WHEN YOU ARE"));eyebrow.setForeground(DesktopApp.ACCENT);eyebrow.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,11));card.add(eyebrow);card.add(Box.createVerticalStrut(14));
-        JLabel title=new JLabel(I18n.t("从一个连接开始","Start with a connection"));title.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,28));title.setForeground(DesktopApp.INK);card.add(title);card.add(Box.createVerticalStrut(10));JLabel description=new JLabel(I18n.t("本地编辑、顺畅输入。让终端跟上你的思路。","Edit locally, type smoothly. Let the terminal keep up with your thinking."));description.setForeground(DesktopApp.MUTED);card.add(description);card.add(Box.createVerticalStrut(28));
-        JPanel choose=new JPanel(new BorderLayout(8,0));choose.setOpaque(false);quick.setPreferredSize(new Dimension(330,38));choose.add(quick,BorderLayout.CENTER);choose.add(DesktopApp.button(I18n.t("连接","Connect"),()->open(currentProfile())),BorderLayout.EAST);choose.setMaximumSize(new Dimension(470,40));card.add(choose);card.add(Box.createVerticalStrut(16));
-        JButton library=DesktopApp.button(I18n.t("管理连接  ·  Ctrl+Shift+L","Manage connections  ·  Ctrl+Shift+L"),()->new ConnectionLibrary(this));
-        DesktopApp.primary(library);library.setMargin(new Insets(10,22,10,22));
-        card.add(library);
-        card.add(Box.createVerticalStrut(22));JPanel chips=new JPanel(new FlowLayout(FlowLayout.CENTER,8,0));chips.setOpaque(false);
-        for(String chip:new String[]{I18n.t("本地编辑","Local editing"),I18n.t("全屏程序","Full-screen apps"),I18n.t("后台会话","Background sessions"),I18n.t("AI 助手","AI assistant")})chips.add(new Chip(chip));
-        card.add(chips);card.add(Box.createVerticalStrut(18));JLabel note=new JLabel(I18n.t("连接库随用随开，终端始终是主角。","Open the connection library when you need it; the terminal stays center stage."));note.setForeground(DesktopApp.MUTED);note.setFont(DesktopFonts.ui().deriveFont(12f));card.add(note);
-        // BoxLayout aligns children on a shared axis. Mixing the labels' and
-        // button's left alignment with the connection row's center shifts the
-        // row sideways and unnecessarily widens the card, especially at HiDPI.
-        for(Component child:card.getComponents())if(child instanceof JComponent component)component.setAlignmentX(Component.CENTER_ALIGNMENT);
-        background.add(card);return background;
+        JPanel background=new JPanel(new GridBagLayout());background.setBackground(Theme.CANVAS);
+        JPanel launcher=new JPanel(new BorderLayout(44,0));launcher.setOpaque(false);launcher.setPreferredSize(new Dimension(960,410));
+        JPanel main=new JPanel();main.setOpaque(false);main.setLayout(new BoxLayout(main,BoxLayout.Y_AXIS));
+        JLabel eyebrow=new JLabel(I18n.t("SSH 工作区","SSH WORKSPACE"));eyebrow.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,12));eyebrow.setForeground(Theme.ACCENT);
+        JLabel title=new JLabel(I18n.t("打开一个会话","Open a session"));title.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,34));title.setForeground(Theme.INK);
+        JLabel description=new JLabel(I18n.t("本地编辑命令，网络慢时输入依然流畅。","Write locally. Your typing stays responsive even when SSH is slow."));description.setFont(DesktopFonts.ui().deriveFont(14));description.setForeground(Theme.MUTED);
+        main.add(eyebrow);main.add(Box.createVerticalStrut(13));main.add(title);main.add(Box.createVerticalStrut(10));main.add(description);
+        main.add(Box.createVerticalStrut(42));
+        JLabel chooseLabel=new JLabel(I18n.t("选择连接","CHOOSE CONNECTION"));chooseLabel.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,11));chooseLabel.setForeground(Theme.MUTED);main.add(chooseLabel);main.add(Box.createVerticalStrut(10));
+        JPanel choose=new JPanel(new BorderLayout(10,0));choose.setOpaque(false);quick.setPreferredSize(new Dimension(355,43));choose.add(quick,BorderLayout.CENTER);
+        JButton connect=DesktopApp.primary(DesktopApp.button(I18n.t("连接","Connect"),()->open(currentProfile())));connect.setPreferredSize(new Dimension(106,43));choose.add(connect,BorderLayout.EAST);
+        choose.setMaximumSize(new Dimension(Integer.MAX_VALUE,45));main.add(choose);main.add(Box.createVerticalStrut(15));
+        JPanel actions=new JPanel(new FlowLayout(FlowLayout.LEFT,10,0));actions.setOpaque(false);
+        actions.add(DesktopApp.button(I18n.t("连接库","Connection library"),()->new ConnectionLibrary(this)));
+        actions.add(DesktopApp.button(I18n.t("新建 SSH 配置","New SSH profile"),()->app.edit(owner,null)));
+        main.add(actions);main.add(Box.createVerticalGlue());
+        JLabel hint=new JLabel(I18n.t("Ctrl+Shift+L 打开连接库  ·  Ctrl+N 新建配置","Ctrl+Shift+L opens connections  ·  Ctrl+N adds a profile"));hint.setFont(DesktopFonts.ui().deriveFont(11.5f));hint.setForeground(Theme.FAINT);main.add(hint);
+        for(Component child:main.getComponents())if(child instanceof JComponent component)component.setAlignmentX(Component.LEFT_ALIGNMENT);
+        launcher.add(main,BorderLayout.CENTER);
+
+        JPanel saved=new JPanel(new BorderLayout(0,13));saved.setPreferredSize(new Dimension(330,410));saved.setBackground(Theme.SURFACE);
+        saved.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(Theme.LINE),new EmptyBorder(20,20,16,20)));
+        JLabel recent=new JLabel(I18n.t("已保存的连接","SAVED CONNECTIONS"));recent.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,11));recent.setForeground(Theme.MUTED);saved.add(recent,BorderLayout.NORTH);
+        JList<Profile> profiles=new JList<>(app.accounts);profiles.setName("welcome-connections");profiles.setFixedCellHeight(68);profiles.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        profiles.setCellRenderer((list,profile,index,selected,focus)->{
+            JPanel row=new JPanel(new GridLayout(2,1,0,2));row.setBackground(selected?Theme.TINT:Theme.SURFACE);
+            row.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(0,3,0,0,selected?Theme.ACCENT:Theme.SURFACE),new EmptyBorder(9,12,9,8)));
+            JLabel name=new JLabel(profile.name());name.setFont(DesktopFonts.ui().deriveFont(Font.BOLD,13));name.setForeground(Theme.INK);row.add(name);
+            JLabel address=new JLabel(profile.user()+"@"+profile.host());address.setFont(DesktopFonts.ui().deriveFont(11.5f));address.setForeground(Theme.MUTED);row.add(address);return row;
+        });
+        profiles.addListSelectionListener(e->{if(!e.getValueIsAdjusting()&&profiles.getSelectedValue()!=null)selectProfile(profiles.getSelectedValue());});
+        profiles.addMouseListener(new MouseAdapter(){@Override public void mouseClicked(MouseEvent e){if(e.getClickCount()==2&&SwingUtilities.isLeftMouseButton(e))open(profiles.getSelectedValue());}});
+        profiles.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER,0),"connect");profiles.getActionMap().put("connect",new AbstractAction(){public void actionPerformed(ActionEvent e){open(profiles.getSelectedValue());}});
+        JScrollPane savedScroll=new EditorScrollPane(profiles);savedScroll.setBorder(null);saved.add(savedScroll,BorderLayout.CENTER);
+        JLabel savedHint=new JLabel(I18n.t("双击连接 · 更多配置在连接库中","Double-click to connect · manage in library"));savedHint.setForeground(Theme.FAINT);savedHint.setFont(DesktopFonts.ui().deriveFont(11));saved.add(savedHint,BorderLayout.SOUTH);
+        launcher.add(saved,BorderLayout.EAST);background.add(launcher);return background;
     }
     void syncAccounts(){if(owner!=null&&!owner.isDisplayable()&&!app.windows.contains(owner))return;syncing=true;try{quick.removeAllItems();app.profiles().forEach(quick::addItem);Profile chosen=app.profiles().stream().filter(p->p.id().equals(selectedId)).findFirst().orElse(app.accounts.isEmpty()?null:app.accounts.firstElement());if(chosen!=null){quick.setSelectedItem(chosen);selectedId=chosen.id();}}finally{syncing=false;}updateActions();}
     void selectProfile(Profile profile){if(profile!=null){selectedId=profile.id();syncAccounts();}}
@@ -123,23 +137,4 @@ final class Workspace {
     private void updateActions(){updateTabHeaders(tabs);boolean connected=active()!=null;passThrough.setSelected(connected&&active().passThrough());sessionItems.forEach(i->i.setEnabled(connected));profileItems.forEach(i->i.setEnabled(currentProfile()!=null));}
     void open(Profile profile){if(profile==null||app.isRestoring())return;selectProfile(profile);app.open(tabs,profile);updateActions();}
     void closeSession(SessionPane pane){if(pane==null)return;if(JOptionPane.showConfirmDialog(root,I18n.t("关闭此会话？草稿和日志会保留。","Close this session? Drafts and logs are kept."),I18n.t("关闭连接","Close connection"),JOptionPane.OK_CANCEL_OPTION)!=JOptionPane.OK_OPTION)return;pane.close();tabs.remove(pane);updateActions();}
-    /** Small rounded label on a tinted background. */
-    private static final class Chip extends JLabel {
-        Chip(String text){super(text);setFont(DesktopFonts.ui().deriveFont(Font.BOLD,11.5f));setForeground(Theme.ACCENT_HOVER);setBorder(new EmptyBorder(4,10,4,10));}
-        @Override protected void paintComponent(Graphics graphics){Graphics2D g=(Graphics2D)graphics.create();try{g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);g.setColor(Theme.TINT);g.fillRoundRect(0,0,getWidth(),getHeight(),getHeight(),getHeight());}finally{g.dispose();}super.paintComponent(graphics);}
-    }
-    /** Surface card with a soft shadow, drawn so it needs no translucent window. */
-    private static final class RoundedCard extends JPanel {
-        RoundedCard(){setOpaque(false);}
-        @Override public Insets getInsets(){Insets inner=super.getInsets();return new Insets(inner.top+6,inner.left+6,inner.bottom+10,inner.right+6);}
-        @Override protected void paintComponent(Graphics graphics){
-            Graphics2D g=(Graphics2D)graphics.create();try{
-                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
-                int w=getWidth()-12,h=getHeight()-16;
-                for(int i=6;i>0;i--){g.setColor(Theme.shadow(1));g.fillRoundRect(6-i,6-i+3,w+2*i,h+2*i,22+i,22+i);}
-                g.setColor(Theme.SURFACE);g.fillRoundRect(6,6,w,h,20,20);
-                g.setColor(Theme.LINE);g.drawRoundRect(6,6,w,h,20,20);
-            }finally{g.dispose();}
-        }
-    }
 }
