@@ -2,7 +2,7 @@
 
 **Keep typing when the network cannot keep up.** Lagless makes SSH feel responsive on slow or unstable connections by letting you write commands locally while SSH communication happens in the background. Use it in your existing terminal or in the desktop app. Nothing needs to be installed on the SSH server.
 
-[简体中文](README.zh-CN.md) · [Download](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.15) · [Desktop guide](docs/desktop.md) · [Terminal/core guide](docs/core.md) · [Plugin guide](docs/plugins.md) · [LINUX DO](https://linux.do/)
+[简体中文](README.zh-CN.md) · [Download](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.14) · [Desktop guide](docs/desktop.md) · [Terminal/core guide](docs/core.md) · [Plugin guide](docs/plugins.md) · [LINUX DO](https://linux.do/)
 
 ![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue) ![Java 21+](https://img.shields.io/badge/source-Java%2021%2B-0b7f70) ![Desktop preview](https://img.shields.io/badge/desktop-0.2.0%20preview-orange)
 
@@ -53,13 +53,13 @@ The [full gallery](docs/gallery.md) includes larger screenshots and explains whi
 
 ## Download and start
 
-**Current release: [v0.2.0-rc.8.15](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.15), a pre-release.** It contains both desktop and terminal-only downloads. A stable public 0.2 release has not been declared yet.
+**Current release: [v0.2.0-rc.8.14](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.14), a pre-release.** It contains both desktop and terminal-only downloads. A stable public 0.2 release has not been declared yet.
 
 | Your setup | Asset to download | Start |
 | --- | --- | --- |
-| Windows x64, native desktop | `lagless-desktop-native-0.2.0-rc.8.15-windows-x64.zip` | Extract the full ZIP; run `Lagless.exe` |
-| Windows x64, Linux x64, or macOS arm64, desktop with bundled runtime | `lagless-0.2.0-rc.8.15-<platform>.zip` | Extract and run `lagless.cmd gui` on Windows or `./lagless gui` elsewhere |
-| Windows x64, Linux x64, or macOS arm64, terminal only | `lagless-terminal-0.2.0-rc.8.15-<platform>.zip` | Extract and run `lagless.cmd user@host` on Windows or `./lagless user@host` elsewhere |
+| Windows x64, native desktop | `lagless-desktop-native-0.2.0-rc.8.14-windows-x64.zip` | Extract the full ZIP; run `Lagless.exe` |
+| Windows x64, Linux x64, or macOS arm64, desktop with bundled runtime | `lagless-0.2.0-rc.8.14-<platform>.zip` | Extract and run `lagless.cmd gui` on Windows or `./lagless gui` elsewhere |
+| Windows x64, Linux x64, or macOS arm64, terminal only | `lagless-terminal-0.2.0-rc.8.14-<platform>.zip` | Extract and run `lagless.cmd user@host` on Windows or `./lagless user@host` elsewhere |
 | Java 21+ already installed | `lagless.jar` (desktop) or `lagless-terminal.jar` | See [install details](docs/core.md) |
 
 Use the asset matching your platform and architecture. Download `SHA256SUMS.txt` from the release to verify the assets. The Windows native package does not require a separate Java installation.

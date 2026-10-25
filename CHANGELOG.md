@@ -2,7 +2,7 @@
 
 The public repository starts from a sanitized source snapshot; older releases remain in the private historical archive. This page groups the user-facing changes across the small release candidates. Detailed notes remain under [`docs/releases/`](docs/releases/).
 
-## 0.2 desktop preview — current: [v0.2.0-rc.8.15](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.15)
+## 0.2 desktop preview — current: [v0.2.0-rc.8.14](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.14)
 
 The 0.2 line is a **pre-release**. It adds a cross-platform desktop workspace while retaining the independent core and terminal-only edition. Recent release candidates focus on:
 
@@ -10,8 +10,7 @@ The 0.2 line is a **pre-release**. It adds a cross-platform desktop workspace wh
 - Windows GraalVM Native Image distribution, plus bundled-runtime desktop and terminal ZIPs for Windows, Linux, and macOS where published.
 - Rendering and input fixes for interactive programs, Chinese input, clipboard use, scrollback, and auxiliary views.
 - Optional AI assistant, output mirror, plugin support, encrypted backup/restore, update and rollback.
-- [rc.8.15](docs/releases/0.2.0-rc.8.15.md) fixes the Windows native EXE failing to start at the first-run language screen and adds that screen to native release verification.
-- Improved full-screen input, Chinese preedit, wrapped-line copying, and English UI in [rc.8.14](docs/releases/0.2.0-rc.8.14.md).
+- Improved full-screen input, Chinese preedit, wrapped-line copying, English UI with a first-run language choice, and a reliable native first start in [rc.8.14](docs/releases/0.2.0-rc.8.14.md).
 - Optional tmux-backed background sessions, which can import output produced while Lagless was closed, in rc.8.14.
 - Separation of ordinary terminal history, full SSH input/output history, and application logs in [rc.8.13](docs/releases/0.2.0-rc.8.13.md).
 
