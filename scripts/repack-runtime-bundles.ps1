@@ -1,6 +1,6 @@
 # Reuse a checksum-verified, patched platform runtime when only the Java application changed.
 # This updates ZIP entries in place, preserving Unix launcher permissions and the JDK files.
-param([string]$SourceVersion = '0.2.0-rc.8.13')
+param([string]$SourceVersion = '0.2.0-rc.8.14')
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression
 $root = Split-Path -Parent $PSScriptRoot
