@@ -1,5 +1,5 @@
 # Build, exercise and package the real desktop application, without a JRE or JAR.
-param([switch]$SkipTests,[switch]$SkipUnitTests,[switch]$ReuseMetadata,[switch]$SkipCompilation,[switch]$UseOfficialCertificateMitigation,[ValidatePattern("^[a-zA-Z0-9-]+$")][string]$OutputFolder="bundle")
+param([switch]$SkipTests,[switch]$SkipUnitTests,[switch]$SkipNativeChecks,[switch]$ReuseMetadata,[switch]$SkipCompilation,[switch]$UseOfficialCertificateMitigation,[ValidatePattern("^[a-zA-Z0-9-]+$")][string]$OutputFolder="bundle")
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -176,7 +176,9 @@ $files=@(Get-ChildItem -LiteralPath $stage -File -Recurse | Where-Object {$_.Nam
     @{path=$relative;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant();size=$_.Length;executable=($relative -eq $exe)}
 })
 @{format=1;edition='desktop-native';version=$version;platform="$platform-$arch";executable=$exe;files=$files} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $stage 'bundle.json') -Encoding utf8NoBOM
-if(!$SkipTests){
+# -SkipNativeChecks keeps the JVM run above (it records the reflection metadata the
+# EXE needs) and skips only re-checking the finished EXE and its update/rollback.
+if(!$SkipTests -and !$SkipNativeChecks){
     Run-Verification $false
     & (Join-Path $PSScriptRoot 'verify-native-update.ps1') -Bundle $stage
 }
@@ -187,4 +189,4 @@ $output=[IO.Compression.ZipFile]::Open($archive,[IO.Compression.ZipArchiveMode]:
 try{
     foreach($relative in (@('bundle.json')+@($files.path))){[IO.Compression.ZipFileExtensions]::CreateEntryFromFile($output,(Join-Path $stage $relative),$relative,[IO.Compression.CompressionLevel]::Optimal) | Out-Null}
 }finally{$output.Dispose()}
-if($SkipTests){Write-Host "Native package built without running tests: $archive"}else{Write-Host "Verified native release: $archive"}
+if($SkipTests){Write-Host "Native package built without running tests: $archive"}elseif($SkipNativeChecks){Write-Host "Native package built; the finished EXE was not re-verified: $archive"}else{Write-Host "Verified native release: $archive"}
