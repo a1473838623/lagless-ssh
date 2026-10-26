@@ -20,6 +20,17 @@ jobs:
       - name: Windows native build (unit tests and final EXE checks skipped)
         shell: pwsh
         run: ./scripts/build-native.ps1 -SkipUnitTests -SkipNativeChecks
+      # ~30 s: the version check of the finished EXE, with gh removed from PATH as on most PCs.
+      # Starting a missing gh crashed the EXE in VCRUNTIME140.dll before rc.8.17 was rebuilt.
+      - name: Update check of the finished EXE (no gh on PATH)
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem dist/lagless-desktop-native-*.zip | Select-Object -First 1
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath smoke -Force
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -and -not (Test-Path -LiteralPath (Join-Path $_ 'gh.exe')) }) -join ';'
+          $p = Start-Process -FilePath smoke/Lagless.exe -ArgumentList '--check-update' -PassThru -Wait -WindowStyle Hidden -RedirectStandardOutput smoke.out -RedirectStandardError smoke.err
+          Get-Content smoke.out, smoke.err
+          if ($p.ExitCode -ne 0) { throw "Update check exited with code $($p.ExitCode)" }
       - uses: actions/upload-artifact@v4
         with:
           name: lagless-native-windows-latest

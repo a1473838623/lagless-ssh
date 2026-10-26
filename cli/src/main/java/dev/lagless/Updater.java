@@ -113,7 +113,10 @@ public final class Updater {
 
     private static String ghCliToken() {
         try {
-            Process p = new ProcessBuilder("gh", "auth", "token").redirectErrorStream(false).start();
+            // Only start gh when it is installed; see Installation.findOnPath.
+            java.nio.file.Path gh = Installation.findOnPath("gh");
+            if (gh == null) return null;
+            Process p = new ProcessBuilder(gh.toString(), "auth", "token").redirectErrorStream(false).start();
             String output;
             try (InputStream in = p.getInputStream()) {
                 output = new String(in.readAllBytes(), StandardCharsets.UTF_8).trim();

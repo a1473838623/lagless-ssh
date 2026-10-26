@@ -23,6 +23,8 @@ public final class NativeDesktopMain {
                 case "--restart-after-update" -> NativeUpdater.restartAfterUpdate(Path.of(args[1]));
                 case "--install-update" -> NativeUpdater.stage(DesktopRuntime.home(),Path.of(args[1]),true);
                 case "--rollback" -> NativeUpdater.rollback();
+                // Runs the in-app version check without the GUI, for diagnosing update problems.
+                case "--check-update" -> System.out.println(NativeUpdater.update(true,event->System.out.println(event.message())));
                 case "--plugin-example" -> ProcessPluginExample.run();
                 case "--diagnostics" -> System.out.println(Json.stringify(Map.of("version",DesktopRuntime.version(),
                         "native",DesktopRuntime.nativeImage(),"home",DesktopRuntime.home().toString(),

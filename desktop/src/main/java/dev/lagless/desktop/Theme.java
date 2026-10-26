@@ -205,6 +205,9 @@ final class Theme {
         String[] command=os.startsWith("windows")?new String[]{"reg","query","HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize","/v","AppsUseLightTheme"}:
                 os.contains("mac")?new String[]{"defaults","read","-g","AppleInterfaceStyle"}:new String[]{"gsettings","get","org.gnome.desktop.interface","color-scheme"};
         try{
+            java.nio.file.Path program=dev.lagless.Installation.findOnPath(command[0]);
+            if(program==null)return systemDark; // not installed: keep the last answer
+            command[0]=program.toString();
             Process process=new ProcessBuilder(command).redirectErrorStream(true).start();
             if(!process.waitFor(1500,TimeUnit.MILLISECONDS)){process.destroyForcibly();return systemDark;}
             String out=new String(process.getInputStream().readAllBytes(),StandardCharsets.UTF_8).toLowerCase(Locale.ROOT);

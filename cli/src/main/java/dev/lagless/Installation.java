@@ -5,6 +5,35 @@ import java.nio.file.Path;
 
 /** Where this copy of lagless lives on disk and what version it is. */
 public final class Installation {
+    /**
+     * The program {@code name} on PATH, or null. Optional helpers (gh, gsettings, ...) are looked
+     * up here before starting them: on Windows a Native Image EXE crashed in the C runtime while
+     * reporting that a program to start does not exist, instead of throwing an exception.
+     */
+    public static java.nio.file.Path findOnPath(String name) {
+        String path = System.getenv("PATH");
+        if (path == null || path.isBlank() || name.isBlank()) return null;
+        boolean windows = System.getProperty("os.name", "").startsWith("Windows");
+        java.util.List<String> suffixes = new java.util.ArrayList<>();
+        suffixes.add("");
+        if (windows) {
+            String ext = System.getenv("PATHEXT");
+            for (String e : (ext == null || ext.isBlank() ? ".COM;.EXE;.BAT;.CMD" : ext).split(";")) if (!e.isBlank()) suffixes.add(e.toLowerCase(java.util.Locale.ROOT));
+        }
+        for (String dir : path.split(java.io.File.pathSeparator)) {
+            if (dir.isBlank()) continue;
+            for (String suffix : suffixes) {
+                try {
+                    java.nio.file.Path candidate = java.nio.file.Path.of(dir.replace("\"", ""), name + suffix);
+                    if (java.nio.file.Files.isRegularFile(candidate) && (windows || java.nio.file.Files.isExecutable(candidate))) return candidate;
+                } catch (RuntimeException invalid) {
+                    // A malformed PATH entry is skipped.
+                }
+            }
+        }
+        return null;
+    }
+
 
     private Installation() {
     }
