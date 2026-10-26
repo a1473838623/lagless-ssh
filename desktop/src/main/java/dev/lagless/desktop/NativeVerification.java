@@ -103,7 +103,7 @@ public final class NativeVerification {
             Thread.sleep(300);
             SwingUtilities.invokeAndWait(()->{app[0].setEditorWrap(true);require(pane[0].inlineDraft.getLineWrap()&&pane[0].draft.getLineWrap(),"editor wrapping synchronized");app[0].setEditorWrap(false);
                 for(Window window:Window.getWindows())if(window instanceof JDialog dialog&&dialog.getTitle().contains("文件管理")){
-                    JTable table=findQueue(dialog);require(table!=null&&table.getRowCount()==2,"visible download queue");Component progress=table.prepareRenderer(table.getCellRenderer(0,3),0,3);require(progress instanceof JProgressBar,"progress renderer");
+                    JTable table=findQueue(dialog);require(table!=null&&table.getRowCount()==2,"visible download queue");int progressColumn=-1;for(int c=0;c<table.getColumnCount();c++)if(table.getColumnClass(c)==TransferQueue.Job.class)progressColumn=c;require(progressColumn>=0,"progress column");Component progress=table.prepareRenderer(table.getCellRenderer(0,progressColumn),0,progressColumn);require(progress instanceof JProgressBar,"progress renderer");
                     BufferedImage image=new BufferedImage(dialog.getWidth(),dialog.getHeight(),BufferedImage.TYPE_INT_RGB);Graphics2D graphics=image.createGraphics();dialog.printAll(graphics);graphics.dispose();try{javax.imageio.ImageIO.write(image,"png",home.getParent().resolve("transfer-queue.png").toFile());}catch(IOException e){throw new UncheckedIOException(e);}
                 }
             });report.put("editor-wrap",true);
