@@ -127,7 +127,13 @@ public final class LocalEcho {
         void apply(Edit e) {
             int n = cells.length;
             if (e.cp == Edit.MOVE) {
-                cursor = e.col;
+                cursor = Math.max(0, Math.min(e.col, n));
+                return;
+            }
+            // After the window shrinks, an edit made on the wider row may lie past the new
+            // edge; drawing it there used to throw and end the program. Clip it instead.
+            if (e.col < 0 || e.col >= n || !e.erase && e.col + e.width > n) {
+                cursor = Math.max(0, Math.min(e.col, n));
                 return;
             }
             if (e.erase) {
@@ -1159,7 +1165,7 @@ public final class LocalEcho {
         if (screen.row() != baseRow) {
             return true;
         }
-        int from = base.cursor;
+        int from = Math.min(base.cursor, Math.min(base.cells.length, screen.cols()));
         for (Edit e : pending) {
             from = Math.min(from, e.col);
         }

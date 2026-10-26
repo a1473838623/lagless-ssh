@@ -382,7 +382,12 @@ public final class TerminalSession {
             } else {
                 // One write: on Windows every write() is its own console call,
                 // and the console may paint between two of them.
-                String out = localEcho.onOutput(text, System.nanoTime());
+                String out;
+                try {
+                    out = localEcho.onOutput(text, System.nanoTime());
+                } catch (RuntimeException e) {
+                    out = predictorFailed(e, text);
+                }
                 if (!out.isEmpty()) {
                     Recorder.wrote(out);
                     writer.write(out);
@@ -432,7 +437,12 @@ public final class TerminalSession {
             trimMemory();
             if (mode == Mode.RAW) {
                 synchronized (outLock) {
-                    String fix = localEcho.tick(System.nanoTime());
+                    String fix;
+                    try {
+                        fix = localEcho.tick(System.nanoTime());
+                    } catch (RuntimeException e) {
+                        fix = predictorFailed(e, "");
+                    }
                     if (!fix.isEmpty() && mode == Mode.RAW) {
                         Recorder.wrote(fix);
                         writer.write(fix);
@@ -540,13 +550,18 @@ public final class TerminalSession {
             lastSize = s;
             synchronized (outLock) {
                 // The terminal may reflow on resize; nothing predicted survives that reliably.
-                String flushed = localEcho.resetForResize();
-                if (!flushed.isEmpty()) {
-                    Recorder.wrote(flushed);
-                    writer.write(flushed);
-                    writer.flush();
+                try {
+                    String flushed = localEcho.resetForResize();
+                    if (!flushed.isEmpty()) {
+                        Recorder.wrote(flushed);
+                        writer.write(flushed);
+                        writer.flush();
+                    }
+                    localEcho.resize(s.getColumns(), s.getRows());
+                } catch (RuntimeException e) {
+                    predictorFailed(e, "");
+                    localEcho.resize(s.getColumns(), s.getRows());
                 }
-                localEcho.resize(s.getColumns(), s.getRows());
             }
             conn.resize(s.getColumns(), s.getRows());
             audit(I18n.t("终端尺寸变更；列=","Terminal resized; cols=") + s.getColumns() + I18n.t("；行=","; rows=") + s.getRows() + I18n.t("；仅通知远端 PTY，无 SSH 回车","; remote PTY notified only, no SSH Enter"));
@@ -651,12 +666,36 @@ public final class TerminalSession {
      * Draws local echo for keys going to a full-screen program and returns
      * what to send for them; see {@link LocalEcho}.
      */
+    /**
+     * Local echo is an optimisation: a bug in it must never end the session
+     * (it used to close the whole program on a window resize). Log it and
+     * continue this connection with keys shown once the remote echoes them.
+     * Returns {@code output} unchanged so the caller can still show it.
+     */
+    private String predictorFailed(RuntimeException error, String output) {
+        java.io.StringWriter trace = new java.io.StringWriter();
+        error.printStackTrace(new java.io.PrintWriter(trace));
+        Log.d("local echo failed; continuing without prediction: " + trace);
+        audit(I18n.t("本地回显出错，本连接改为等待远端回显：","Local echo failed; this connection now waits for the remote echo: ") + error);
+        // A fresh, disabled instance: the failed one's state cannot be trusted.
+        localEcho = new LocalEcho(screen);
+        localEcho.setEnabled(false);
+        localEcho.setLocalLine(false);
+        return output;
+    }
+
     private String echoLocally(String keys) {
         synchronized (outLock) {
             if (mode != Mode.RAW) {
                 return keys;
             }
-            String drawn = localEcho.onKeys(keys, System.nanoTime());
+            String drawn;
+            try {
+                drawn = localEcho.onKeys(keys, System.nanoTime());
+            } catch (RuntimeException e) {
+                predictorFailed(e, "");
+                return keys;
+            }
             if (!drawn.isEmpty()) {
                 Recorder.wrote(drawn);
                 writer.write(drawn);

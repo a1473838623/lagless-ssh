@@ -11,25 +11,40 @@ import java.util.function.Consumer;
 
 /** Recursive SFTP with a shared bandwidth budget and staged replacement of each file. */
 final class SftpTransfers {
-    record Entry(String name,boolean directory,boolean link,long size){public String toString(){return name+(link?I18n.t(" (链接)"," (link)"):"");}}
+    record Entry(String name,boolean directory,boolean link,long size,boolean regular){public String toString(){return name+(link?I18n.t(" (链接)"," (link)"):"");}}
     private final ChannelSftp channel;private final long rate;private long nextPermit=System.nanoTime();
     private final AtomicBoolean cancelled;private final LongConsumer progress;private long bytes,lastUpdate;private int entries;
     private Consumer<String> current=path->{};
+    private Runnable fileDone=()->{};
+    /** Called after each file is complete, for a files-done count beside the byte progress. */
+    SftpTransfers onFileDone(Runnable listener){fileDone=listener;return this;}
     private Path downloadAnchor;
     SftpTransfers(ChannelSftp channel,long rate,AtomicBoolean cancelled,LongConsumer progress)throws JSchException{
         this.channel=channel;this.rate=rate;this.cancelled=cancelled;this.progress=progress;channel.setBulkRequests(4);
     }
     SftpTransfers(ChannelSftp channel,long rate,AtomicBoolean cancelled,LongConsumer progress,Consumer<String> current)throws JSchException{this(channel,rate,cancelled,progress);this.current=current;}
     record Measure(long bytes,long files){}
-    static Measure measure(ChannelSftp channel,String remote,Path local,boolean upload,AtomicBoolean cancelled)throws Exception{
-        class Scan{long bytes,files;int entries;void visit(String path,Path file,int depth)throws Exception{
+    static Measure measure(ChannelSftp channel,String remote,Path local,boolean upload,AtomicBoolean cancelled)throws Exception{return measure(channel,remote,local,upload,cancelled,m->{});}
+    /** Totals for a transfer; {@code progress} sees the running totals so a long scan shows it is moving. */
+    static Measure measure(ChannelSftp channel,String remote,Path local,boolean upload,AtomicBoolean cancelled,Consumer<Measure> progress)throws Exception{
+        class Scan{long bytes,files,shown;int entries;
+            void counted(){if(files-shown>=50){shown=files;progress.accept(new Measure(bytes,files));}}
+            // A folder listing already carries each child's attributes: no extra round trip per file.
+            void remote(String path,SftpATTRS a,int depth)throws Exception{
+                if(cancelled.get()||Thread.currentThread().isInterrupted())throw new InterruptedIOException(I18n.t("传输已取消","Transfer cancelled"));if(depth>64||++entries>100000)throw new IOException(I18n.t("目录超过 64 层或 100000 项","Folder exceeds 64 levels or 100000 items"));
+                if(a.isLink())throw new IOException(I18n.t("不跟随符号链接：","Symbolic link not followed: ")+path);
+                if(a.isDir()){for(var item:channel.ls(path)){String name=item.getFilename();if(name.equals(".")||name.equals(".."))continue;remote(child(path,name),item.getAttrs(),depth+1);}}
+                else{if(!a.isReg())throw new IOException(I18n.t("不是普通文件：","Not a regular file: ")+path);bytes=Math.addExact(bytes,a.getSize());files++;counted();}
+            }
+            void visit(String path,Path file,int depth)throws Exception{
             if(cancelled.get()||Thread.currentThread().isInterrupted())throw new InterruptedIOException(I18n.t("传输已取消","Transfer cancelled"));if(depth>64||++entries>100000)throw new IOException(I18n.t("目录超过 64 层或 100000 项","Folder exceeds 64 levels or 100000 items"));
             if(upload){if(Files.isSymbolicLink(file))throw new IOException(I18n.t("不跟随符号链接：","Symbolic link not followed: ")+file);if(Files.isDirectory(file,LinkOption.NOFOLLOW_LINKS)){try(var items=Files.newDirectoryStream(file)){for(Path item:items)visit(child(path,item.getFileName().toString()),item,depth+1);}}else{if(!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS))throw new IOException(I18n.t("不是普通文件：","Not a regular file: ")+file);bytes=Math.addExact(bytes,Files.size(file));files++;}}
-            else{SftpATTRS a=channel.lstat(path);if(a.isLink())throw new IOException(I18n.t("不跟随符号链接：","Symbolic link not followed: ")+path);if(a.isDir()){for(Entry item:list(channel,path))visit(child(path,item.name()),file.resolve(item.name()),depth+1);}else{if(!a.isReg())throw new IOException(I18n.t("不是普通文件：","Not a regular file: ")+path);bytes=Math.addExact(bytes,a.getSize());files++;}}
+            else remote(path,channel.lstat(path),depth);
+            if(upload)counted();
         }}Scan scan=new Scan();scan.visit(remote,local,0);return new Measure(scan.bytes,scan.files);
     }
     static List<Entry> list(ChannelSftp channel,String path)throws SftpException{
-        List<Entry> result=new ArrayList<>();for(var item:channel.ls(path)){String name=item.getFilename();if(name.equals(".")||name.equals(".."))continue;var a=item.getAttrs();result.add(new Entry(name,a.isDir(),a.isLink(),a.getSize()));}
+        List<Entry> result=new ArrayList<>();for(var item:channel.ls(path)){String name=item.getFilename();if(name.equals(".")||name.equals(".."))continue;var a=item.getAttrs();result.add(new Entry(name,a.isDir(),a.isLink(),a.getSize(),a.isReg()));}
         result.sort(Comparator.comparing(Entry::directory).reversed().thenComparing(Entry::name,String.CASE_INSENSITIVE_ORDER));return result;
     }
     static String child(String parent,String name)throws IOException{validName(name);return (parent.endsWith("/")?parent:parent+"/")+name;}
@@ -45,7 +60,7 @@ final class SftpTransfers {
         }else{
             if(!Files.isRegularFile(local,LinkOption.NOFOLLOW_LINKS))throw new IOException(I18n.t("不是普通文件：","Not a regular file: ")+local);
             SftpATTRS existing=stat(remote);if(existing!=null&&(existing.isLink()||existing.isDir()))throw new IOException(I18n.t("目标文件类型冲突：","Target file type conflict: ")+remote);
-            String staged=remote+suffix();try(InputStream in=Files.newInputStream(local);OutputStream out=channel.put(staged)){copy(in,out);}checkCancelled();channel.rename(staged,remote);
+            String staged=remote+suffix();try(InputStream in=Files.newInputStream(local);OutputStream out=channel.put(staged)){copy(in,out);}checkCancelled();channel.rename(staged,remote);fileDone.run();
         }
     }
     void download(String remote,Path local)throws Exception{
@@ -78,6 +93,7 @@ final class SftpTransfers {
             Files.createDirectories(local.getParent());Path staged=local.resolveSibling(local.getFileName()+suffix());
             try(InputStream in=channel.get(remote);OutputStream out=Files.newOutputStream(staged,StandardOpenOption.CREATE_NEW)){copy(in,out);}checkCancelled();
             try{Files.move(staged,local,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}catch(AtomicMoveNotSupportedException e){Files.move(staged,local,StandardCopyOption.REPLACE_EXISTING);}
+            fileDone.run();
         }
     }
     private void safeLocal(Path path)throws IOException{
