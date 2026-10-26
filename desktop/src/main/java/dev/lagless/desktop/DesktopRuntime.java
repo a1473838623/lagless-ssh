@@ -33,6 +33,12 @@ public final class DesktopRuntime {
             // Use the stable software pipeline; D3D posts additional callbacks from
             // driver threads that are not covered by offscreen rendering metadata.
             System.setProperty("sun.java2d.d3d", "false");
+            // The GDI screen-copy fast path can read beyond a Native Image pixel
+            // buffer while Swing repaints (GDIBlitLoops.nativeBlit). Disabling D3D
+            // alone does not disable it. Use the fallback screen-copy path.
+            if (System.getProperty("os.name", "").startsWith("Windows")) {
+                System.setProperty("sun.java2d.gdiBlit", "false");
+            }
             System.setProperty("java.home", home().toString());
             System.setProperty("lagless.native.home", home().toString());
             System.setProperty("lagless.build.version", version());
