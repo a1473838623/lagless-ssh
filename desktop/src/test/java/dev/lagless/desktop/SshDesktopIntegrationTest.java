@@ -78,6 +78,35 @@ class SshDesktopIntegrationTest {
             assertTrue(commands.isEmpty());assertTrue(writes.stream().noneMatch(x->x.contains("仅换行=true")),"compatibility toggle and wake key must not write a blank line to SSH");view.sendKeys("\r");assertEquals("\u0018\u0013\u001bv",commands.poll(2,TimeUnit.SECONDS));assertTrue(writes.stream().anyMatch(x->x.contains("来源=terminal-keyboard")&&x.contains("CR=1")&&x.contains("LF=0")),"audit counts Enter even when the terminal batches it with preceding shortcut keys");Thread.sleep(900);assertEquals(TerminalSession.Mode.RAW,engine.mode(),"prompt recognition stays disabled until explicitly restored");engine.setPassThrough(false);view.sendKeys("\u0003");await(()->engine.mode()==TerminalSession.Mode.EDIT,5000);connection.close();task.get(5,TimeUnit.SECONDS);
         }finally{runner.shutdownNow();SwingUtilities.invokeAndWait(view::close);}
     }
+    @Test void parallelFolderTransferStartsAtOnceAndRoundTripsManyFiles() throws Exception {
+        Path source=dir.resolve("many"),dest=dir.resolve("many-back");long bytes=0;
+        for(int i=0;i<120;i++){Path file=source.resolve("d"+(i%7)).resolve("子目录"+(i%3)).resolve("f"+i+".txt");Files.createDirectories(file.getParent());String text="file "+i+"\n".repeat(i*37);Files.writeString(file,text);bytes+=Files.size(file);}
+        Files.createDirectories(source.resolve("empty/inner"));
+        try(SshConnection connection=SshConnection.connect(options(),prompter())){
+            long[] found={0,0},moved={0},done={0};boolean[] walking={false};
+            ParallelTransfer.Progress progress=new ParallelTransfer.Progress(){
+                public synchronized void found(long b){found[0]+=b;found[1]++;}
+                public synchronized void moved(long b){moved[0]+=b;}
+                public synchronized void fileDone(){done[0]++;}
+                public void current(String path){}
+                public synchronized void walking(boolean w){walking[0]=w;}
+            };
+            var cancelled=new AtomicBoolean();
+            new ParallelTransfer(connection::openSftp,0,cancelled,progress).upload(source,"/many");
+            assertEquals(120,found[1]);assertEquals(bytes,found[0]);assertEquals(120,done[0]);assertEquals(bytes,moved[0]);
+            found[0]=found[1]=moved[0]=done[0]=0;
+            ParallelTransfer download=new ParallelTransfer(connection::openSftp,0,cancelled,progress);
+            download.download("/many",dest);
+            assertEquals(120,done[0]);assertEquals(bytes,moved[0]);
+            for(int i=0;i<120;i++){Path rel=Path.of("d"+(i%7),"子目录"+(i%3),"f"+i+".txt");assertEquals(Files.readString(source.resolve(rel)),Files.readString(dest.resolve(rel)));}
+            assertTrue(Files.isDirectory(dest.resolve("empty/inner")),"empty folders are created too");
+            assertTrue(download.channels().size()>1,"more than one SFTP channel was used");
+            try(var leftovers=Files.walk(dest)){assertTrue(leftovers.noneMatch(p->p.getFileName().toString().endsWith(".part")),"no staged files are left behind");}
+            // An error in one channel stops the transfer instead of hanging it.
+            Path blocked=dir.resolve("blocked");Files.createDirectories(blocked.resolve("many/d0"));Files.writeString(blocked.resolve("many/d0/子目录0"),"a file where a folder must go");
+            assertThrows(IOException.class,()->new ParallelTransfer(connection::openSftp,0,cancelled,progress).download("/many",blocked.resolve("many")));
+        }
+    }
     @Test void recursiveFoldersRoundTripAndCancellationPreservesOriginal() throws Exception {
         Path source=dir.resolve("upload"),dest=dir.resolve("download");Files.createDirectories(source.resolve("子目录/empty"));Files.writeString(source.resolve("子目录/你好.txt"),"中文\n".repeat(20000));Files.writeString(source.resolve("root.txt"),"root");
         try(SshConnection connection=SshConnection.connect(options(),prompter())){

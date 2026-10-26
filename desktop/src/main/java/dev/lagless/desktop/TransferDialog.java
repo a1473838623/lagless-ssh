@@ -17,10 +17,11 @@ import java.util.List;
 /** Browsers observe a session-owned queue; closing this window never cancels downloads. */
 final class TransferDialog {
     private final SessionPane pane;private final TransferQueue queue;
-    private final JTextField localPath=DesktopApp.field(System.getProperty("user.home")),remotePath=DesktopApp.field("."),limit=DesktopApp.field("256");
+    private final JTextField localPath=DesktopApp.field(System.getProperty("user.home")),remotePath=DesktopApp.field("."),limit=DesktopApp.field("");
     private final DefaultListModel<Path> localModel=new DefaultListModel<>();private final DefaultListModel<SftpTransfers.Entry> remoteModel=new DefaultListModel<>();
     private final JList<Path> local=new JList<>(localModel);private final JList<SftpTransfers.Entry> remote=new JList<>(remoteModel);
-    private final JLabel status=new JLabel(I18n.t("默认限速 256 KiB/s · 关闭此窗口后队列继续，关闭 SSH 会话会取消队列","Default limit 256 KiB/s · The queue keeps running after this window closes; closing the SSH session cancels it"));
+    private final JCheckBox archive=new JCheckBox(I18n.t("文件夹打包传输","Folders as one archive"));
+    private final JLabel status=new JLabel(I18n.t("默认不限速 · 关闭此窗口后队列继续，关闭 SSH 会话会取消队列","No speed limit by default · The queue keeps running after this window closes; closing the SSH session cancels it"));
     private final JDialog dialog;private final QueueModel model=new QueueModel();private final JTable tasks=new JTable(model);private final javax.swing.Timer timer;
     private boolean closed,localBusy,remoteBusy,localReload,remoteReload;private int finished;
     private Path localDirectory=Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();private String remoteDirectory=".";
@@ -36,7 +37,9 @@ final class TransferDialog {
         localPath.addActionListener(e->refreshLocal());remotePath.addActionListener(e->refreshRemote());
         local.addMouseListener(new MouseAdapter(){public void mouseClicked(MouseEvent e){if(e.getClickCount()==2&&!localBusy)open(false);}});
         remote.addMouseListener(new MouseAdapter(){public void mouseClicked(MouseEvent e){if(e.getClickCount()==2&&!remoteBusy)open(true);}});
-        JPanel actions=DesktopApp.row();actions.setBorder(BorderFactory.createEmptyBorder(6,8,6,8));actions.add(DesktopApp.button(I18n.t("上传 →","Upload →"),this::upload));actions.add(DesktopApp.button(I18n.t("← 加入下载队列","← Queue download"),this::download));actions.add(new JLabel(I18n.t("限速 KiB/s","Limit KiB/s")));limit.setColumns(6);actions.add(limit);
+        JPanel actions=DesktopApp.row();actions.setBorder(BorderFactory.createEmptyBorder(6,8,6,8));actions.add(DesktopApp.button(I18n.t("上传 →","Upload →"),this::upload));actions.add(DesktopApp.button(I18n.t("← 加入下载队列","← Queue download"),this::download));actions.add(new JLabel(I18n.t("限速 KiB/s","Limit KiB/s")));limit.setColumns(6);limit.putClientProperty("JTextField.placeholderText",I18n.t("不限","none"));limit.setToolTipText(I18n.t("留空或 0 表示不限速","Leave empty or 0 for no limit"));actions.add(limit);
+        archive.setName("transfer-archive");archive.setSelected(Boolean.parseBoolean(pane.app.preferences.get("transfer-archive","false")));archive.addActionListener(e->pane.app.preferences.set("transfer-archive",Boolean.toString(archive.isSelected())));
+        archive.setToolTipText(I18n.t("文件夹作为一个压缩流（tar.gz）传输，不在任一端生成归档文件；大量小文件时更快。需要服务器有 tar 和 gzip。单个文件仍按普通方式传输。","Folders go as one compressed stream (tar.gz); no archive file is written on either side. Faster for many small files. Needs tar and gzip on the server. Single files still transfer normally."));actions.add(archive);
         JPanel top=new JPanel(new BorderLayout());top.add(browsers,BorderLayout.CENTER);top.add(actions,BorderLayout.SOUTH);
         tasks.setName("transfer-queue");tasks.setRowHeight(30);tasks.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);tasks.setDefaultRenderer(TransferQueue.Job.class,(table,value,selected,focus,row,column)->{TransferQueue.Job job=(TransferQueue.Job)value;JProgressBar progress=new JProgressBar(0,100);progress.setValue(job.percent());progress.setStringPainted(true);progress.setString(job.state==TransferQueue.State.SCANNING?I18n.t("统计中…","Counting…"):job.progressText());return progress;});
         // Long paths: show the end (where the file goes), the full path on hover.
@@ -129,7 +132,8 @@ final class TransferDialog {
             work(server,I18n.t("正在删除…","Deleting…"),()->{if(server){ChannelSftp ch=pane.requireConnection().openSftp();try{for(String source:remoteFiles)FileActions.remoteDelete(ch,source);}finally{ch.disconnect();}}else for(Path source:localFiles)FileActions.localDelete(source);return names;},value->{pane.app.events.operation(pane.profile.name(),I18n.t("删除","Deleted ")+(server?I18n.t("远端","remote"):I18n.t("本地","local"))+I18n.t("文件："," files: ")+value);if(server)refreshRemote();else refreshLocal();});
         }catch(Exception e){DesktopApp.error(dialog,e);}
     }
-    private long rate(){long speed=Math.multiplyExact(Long.parseLong(limit.getText().trim()),1024);if(speed<1024||speed>1024L*1024*1024)throw new IllegalArgumentException(I18n.t("限速范围：1–1048576 KiB/s","Limit range: 1–1048576 KiB/s"));return speed;}
+    /** Bytes per second; empty or 0 is no limit. */
+    private long rate(){String text=limit.getText().trim();if(text.isEmpty()||text.equals("0"))return 0;long speed=Math.multiplyExact(Long.parseLong(text),1024);if(speed<1024||speed>1024L*1024*1024)throw new IllegalArgumentException(I18n.t("限速范围：1–1048576 KiB/s，留空为不限速","Limit range: 1–1048576 KiB/s, or empty for no limit"));return speed;}
     private void paste(boolean server){
         if(busy(server))return;ClipboardFiles files=clipboard;if(files==null){status.setText(I18n.t("请先复制或剪切文件","Copy or cut files first"));return;}
         Path localTarget=localDirectory;String remoteTarget=remoteDirectory;
@@ -181,9 +185,10 @@ final class TransferDialog {
     private void upload(){if(busy(false)||busy(true))return;List<Path> selected=local.getSelectedValuesList();if(selected.isEmpty()){JFileChooser picker=new JFileChooser(localPath.getText());picker.setMultiSelectionEnabled(true);picker.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);if(picker.showOpenDialog(dialog)!=JFileChooser.APPROVE_OPTION)return;selected=Arrays.stream(picker.getSelectedFiles()).map(java.io.File::toPath).toList();}start(true,selected,List.of());}
     private void download(){if(busy(false)||busy(true))return;List<SftpTransfers.Entry> selected=remote.getSelectedValuesList();if(selected.isEmpty()){status.setText(I18n.t("请选择远端文件或文件夹","Select a remote file or folder"));return;}start(false,List.of(),selected);}
     private void start(boolean uploading,List<Path> sources,List<SftpTransfers.Entry> entries){
-        String targetRemote=remoteDirectory;Path targetLocal;long speed;try{targetLocal=localDirectory;speed=Math.multiplyExact(Long.parseLong(limit.getText().trim()),1024);if(speed<1024||speed>1024L*1024*1024)throw new IllegalArgumentException();for(Path p:sources)SftpTransfers.validName(p.getFileName().toString());for(var item:entries)SftpTransfers.validName(item.name());pane.requireConnection();}catch(Exception e){DesktopApp.error(dialog,new IllegalArgumentException(I18n.t("请检查连接、文件名和限速（1–1048576 KiB/s）。","Check the connection, file names and limit (1–1048576 KiB/s)."),e));return;}
+        String targetRemote=remoteDirectory;Path targetLocal;long speed;try{targetLocal=localDirectory;speed=rate();for(Path p:sources)SftpTransfers.validName(p.getFileName().toString());for(var item:entries)SftpTransfers.validName(item.name());pane.requireConnection();}catch(Exception e){DesktopApp.error(dialog,new IllegalArgumentException(I18n.t("请检查连接、文件名和限速（1–1048576 KiB/s，留空为不限速）。","Check the connection, file names and limit (1–1048576 KiB/s, or empty for none)."),e));return;}
         int count=uploading?sources.size():entries.size();if(JOptionPane.showConfirmDialog(dialog,(uploading?I18n.t("上传","Upload"):I18n.t("下载","Download"))+" "+count+I18n.t(" 项至：\n"," item(s) to:\n")+(uploading?targetRemote:targetLocal)+I18n.t("\n文件夹会合并；同名文件完成传输后替换。","\nFolders are merged; files with the same name are replaced after transfer."),I18n.t("加入传输队列","Add to transfer queue"),JOptionPane.OK_CANCEL_OPTION)!=JOptionPane.OK_OPTION)return;
-        try{if(uploading){for(Path source:sources)queue.enqueue(true,source,SftpTransfers.child(targetRemote,source.getFileName().toString()),speed);}else for(var item:entries)queue.enqueue(false,targetLocal.resolve(item.name()),SftpTransfers.child(targetRemote,item.name()),speed);refreshQueue();status.setText(I18n.t("已加入 ","Added ")+count+I18n.t(" 项；可继续添加任务"," item(s); you can keep adding tasks"));}catch(Exception e){DesktopApp.error(dialog,e);}
+        boolean packed=archive.isSelected();
+        try{if(uploading){for(Path source:sources)queue.enqueue(true,source,SftpTransfers.child(targetRemote,source.getFileName().toString()),speed,null,packed);}else for(var item:entries)queue.enqueue(false,targetLocal.resolve(item.name()),SftpTransfers.child(targetRemote,item.name()),speed,null,packed);refreshQueue();status.setText(I18n.t("已加入 ","Added ")+count+I18n.t(" 项；可继续添加任务"," item(s); you can keep adding tasks"));}catch(Exception e){DesktopApp.error(dialog,e);}
     }
     private TransferQueue.Job selected(){int row=tasks.getSelectedRow();return row>=0&&row<model.jobs.size()?model.jobs.get(row):null;}
     private void showDetails(){TransferQueue.Job job=selected();if(job!=null)status.setText(job.status()+" · "+job.remote+" → "+job.local+(job.error.isBlank()?"":" · "+job.error));}
@@ -193,10 +198,11 @@ final class TransferDialog {
         List<TransferQueue.Job> jobs=List.of();private final String[] columns={I18n.t("文件 / 文件夹","File / folder"),I18n.t("方向","Direction"),I18n.t("来源","From"),I18n.t("目标","To"),I18n.t("状态","Status"),I18n.t("进度","Progress"),I18n.t("已传输 / 总量","Transferred / total"),I18n.t("速度","Speed")};public int getRowCount(){return jobs.size();}public int getColumnCount(){return columns.length;}public String getColumnName(int c){return columns[c];}public Class<?> getColumnClass(int c){return c==PROGRESS?TransferQueue.Job.class:String.class;}
         public Object getValueAt(int row,int column){TransferQueue.Job j=jobs.get(row);return switch(column){case 0->j.name();case 1->j.upload?I18n.t("上传","Upload"):I18n.t("下载","Download");case 2->j.from();case 3->j.to();case 4->j.status();case PROGRESS->j;case 6->transferred(j);default->j.state==TransferQueue.State.RUNNING?size(j.speed())+"/s":"—";};}
         private static String transferred(TransferQueue.Job j){
-            String files=j.files>1?I18n.t(" · "," · ")+(j.state==TransferQueue.State.SCANNING?"":j.done+" / ")+j.files+I18n.t(" 个文件"," files"):"";
+            // "+" while the walk is still finding files: the totals are not final yet.
+            String more=j.walking?"+":"";
+            String files=j.files>1?" · "+j.done+" / "+j.files+more+I18n.t(" 个文件"," files"):"";
             if(j.state==TransferQueue.State.WAITING)return I18n.t("等待","Waiting");
-            if(j.state==TransferQueue.State.SCANNING)return I18n.t("统计中 · 已找到 ","Counting · found ")+size(j.total)+files;
-            return size(j.bytes)+" / "+size(j.total)+files;
+            return size(j.bytes)+" / "+(j.total>0?size(j.total)+more:"?")+files;
         }
     }
 }

@@ -15,15 +15,22 @@ final class TransferQueue implements AutoCloseable {
     enum State{WAITING,SCANNING,RUNNING,COMPLETE,FAILED,CANCELLED}
     static final class Job {
         final String id=UUID.randomUUID().toString();final boolean upload;final Path local;final String remote;final long rate;final AtomicBoolean cancelled=new AtomicBoolean();
+        /** Folders as one tar stream instead of file by file; see ArchiveTransfer. */
+        final boolean archive;
+        /** While true, the folder walk is still finding files, so the totals still grow. */
+        volatile boolean walking;volatile List<ChannelSftp> channels=List.of();
         final Completion completion;
         volatile State state=State.WAITING;volatile long bytes,total,files,done,started;volatile String current="",error="";volatile ChannelSftp channel;volatile Future<?> future;
         Job(boolean upload,Path local,String remote,long rate){this(upload,local,remote,rate,null);}
-        Job(boolean upload,Path local,String remote,long rate,Completion completion){this.upload=upload;this.local=local.toAbsolutePath().normalize();this.remote=remote;this.rate=rate;this.completion=completion;}
+        Job(boolean upload,Path local,String remote,long rate,Completion completion){this(upload,local,remote,rate,completion,false);}
+        Job(boolean upload,Path local,String remote,long rate,Completion completion,boolean archive){this.upload=upload;this.local=local.toAbsolutePath().normalize();this.remote=remote;this.rate=rate;this.completion=completion;this.archive=archive;}
         boolean terminal(){return state==State.COMPLETE||state==State.FAILED||state==State.CANCELLED;}
         int percent(){return state==State.COMPLETE?100:total>0?(int)Math.min(99,bytes*100.0/total):0;}
         /** Progress label: one decimal below 10 %, so a large folder visibly moves instead of sitting at 0 %. */
         String progressText(){
             if(state==State.COMPLETE)return "100%";
+            // Still finding files: a percentage of what was found so far would run ahead.
+            if(walking)return done+" / "+files+"+";
             if(total<=0)return files>0&&done>0?done+" / "+files:"0%";
             double value=Math.min(99.9,bytes*100.0/total);
             return value<10?String.format(java.util.Locale.ROOT,"%.1f%%",value):(int)value+"%";
@@ -32,27 +39,45 @@ final class TransferQueue implements AutoCloseable {
         String to(){return upload?remote:local.toString();}
         long speed(){long elapsed=System.nanoTime()-started;return started==0||elapsed<=0?0:(long)(bytes*1_000_000_000.0/elapsed);}
         String name(){return local.getFileName().toString();}
-        String status(){return switch(state){case WAITING->I18n.t("排队中","Queued");case SCANNING->I18n.t("统计大小","Counting size");case RUNNING->I18n.t("传输中","Transferring");case COMPLETE->I18n.t("已完成","Finished");case FAILED->I18n.t("失败","Failed");case CANCELLED->I18n.t("已取消","Cancelled");};}
+        String status(){return switch(state){case WAITING->I18n.t("排队中","Queued");case SCANNING->I18n.t("统计大小","Counting size");case RUNNING->walking?I18n.t("传输中 · 仍在列出文件","Transferring · still listing"):I18n.t("传输中","Transferring");case COMPLETE->I18n.t("已完成","Finished");case FAILED->I18n.t("失败","Failed");case CANCELLED->I18n.t("已取消","Cancelled");};}
     }
     private final Supplier<SshConnection> connection;private final Consumer<String> events;private final Executor cancellations;
     private final List<Job> jobs=new ArrayList<>();private boolean closed;
     private final ThreadPoolExecutor worker=new ThreadPoolExecutor(1,1,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(256),r->new Thread(r,"lagless-transfer-queue"));
     TransferQueue(Supplier<SshConnection> connection,Consumer<String> events,Executor cancellations){this.connection=connection;this.events=events;this.cancellations=cancellations;}
     synchronized Job enqueue(boolean upload,Path local,String remote,long rate){return enqueue(upload,local,remote,rate,null);}
-    synchronized Job enqueue(boolean upload,Path local,String remote,long rate,Completion completion){if(closed)throw new IllegalStateException(I18n.t("SSH 会话已关闭","SSH session is closed"));if(jobs.size()>=256)throw new IllegalStateException(I18n.t("队列最多保留 256 项，请先清除已结束任务","The queue holds at most 256 items; clear finished tasks first"));Job job=new Job(upload,local,remote,rate,completion);jobs.add(job);try{job.future=worker.submit(()->run(job));}catch(RejectedExecutionException e){jobs.remove(job);throw e;}return job;}
+    synchronized Job enqueue(boolean upload,Path local,String remote,long rate,Completion completion){return enqueue(upload,local,remote,rate,completion,false);}
+    synchronized Job enqueue(boolean upload,Path local,String remote,long rate,Completion completion,boolean archive){if(closed)throw new IllegalStateException(I18n.t("SSH 会话已关闭","SSH session is closed"));if(jobs.size()>=256)throw new IllegalStateException(I18n.t("队列最多保留 256 项，请先清除已结束任务","The queue holds at most 256 items; clear finished tasks first"));Job job=new Job(upload,local,remote,rate,completion,archive);jobs.add(job);try{job.future=worker.submit(()->run(job));}catch(RejectedExecutionException e){jobs.remove(job);throw e;}return job;}
     synchronized List<Job> snapshot(){return List.copyOf(jobs);}
     synchronized void clearFinished(){jobs.removeIf(Job::terminal);}
-    Job retry(Job job){if(job.state!=State.FAILED&&job.state!=State.CANCELLED)throw new IllegalArgumentException(I18n.t("仅失败或取消的任务可重新加入队列","Only failed or cancelled tasks can be queued again"));return enqueue(job.upload,job.local,job.remote,job.rate,job.completion);}
-    void cancel(Job job){if(job.terminal())return;job.cancelled.set(true);if(job.state==State.WAITING){job.state=State.CANCELLED;Future<?> future=job.future;if(future!=null)future.cancel(false);worker.purge();}ChannelSftp channel=job.channel;if(channel!=null)cancellations.execute(channel::disconnect);}
+    Job retry(Job job){if(job.state!=State.FAILED&&job.state!=State.CANCELLED)throw new IllegalArgumentException(I18n.t("仅失败或取消的任务可重新加入队列","Only failed or cancelled tasks can be queued again"));return enqueue(job.upload,job.local,job.remote,job.rate,job.completion,job.archive);}
+    void cancel(Job job){if(job.terminal())return;job.cancelled.set(true);if(job.state==State.WAITING){job.state=State.CANCELLED;Future<?> future=job.future;if(future!=null)future.cancel(false);worker.purge();}ChannelSftp channel=job.channel;if(channel!=null)cancellations.execute(channel::disconnect);for(ChannelSftp extra:job.channels)cancellations.execute(extra::disconnect);}
     private void run(Job job){
-        if(job.cancelled.get()){job.state=State.CANCELLED;return;}job.state=State.SCANNING;events.accept((job.upload?I18n.t("上传","Upload"):I18n.t("下载","Download"))+I18n.t("开始："," started: ")+job.remote);
-        try{ChannelSftp channel=connection.get().openSftp();job.channel=channel;try{
+        if(job.cancelled.get()){job.state=State.CANCELLED;return;}events.accept((job.upload?I18n.t("上传","Upload"):I18n.t("下载","Download"))+I18n.t("开始："," started: ")+job.remote);
+        try{SshConnection ssh=connection.get();ChannelSftp channel=ssh.openSftp();job.channel=channel;try{
             if(job.completion!=null)job.completion.prepare(channel,job);
-            var measure=SftpTransfers.measure(channel,job.remote,job.local,job.upload,job.cancelled,m->{job.total=m.bytes();job.files=m.files();});job.total=measure.bytes();job.files=measure.files();job.started=System.nanoTime();job.state=State.RUNNING;
-            SftpTransfers transfer=new SftpTransfers(channel,job.rate,job.cancelled,n->job.bytes=n,path->job.current=path).onFileDone(()->job.done++);if(job.upload)transfer.upload(job.local,job.remote);else transfer.download(job.remote,job.local);
+            // No size scan first: the transfer starts at once and the totals grow as files are found.
+            job.started=System.nanoTime();job.state=State.RUNNING;
+            ParallelTransfer.Progress progress=new ParallelTransfer.Progress(){
+                public void found(long bytes){synchronized(job){job.total+=bytes;job.files++;}}
+                public void moved(long bytes){synchronized(job){job.bytes+=bytes;}}
+                public void fileDone(){synchronized(job){job.done++;}}
+                public void current(String path){job.current=path;}
+                public void walking(boolean walking){job.walking=walking;}
+                public void expect(long bytes){job.total=bytes;}
+            };
+            boolean folder=job.upload?java.nio.file.Files.isDirectory(job.local,java.nio.file.LinkOption.NOFOLLOW_LINKS):channel.lstat(job.remote).isDir();
+            if(job.archive&&folder){
+                SftpTransfers files=new SftpTransfers(channel,new SftpTransfers.Throttle(job.rate),job.cancelled,n->{}).onBytes(progress::moved).onFileDone(progress::fileDone);
+                ArchiveTransfer archive=new ArchiveTransfer(ssh,files,job.cancelled,progress);
+                if(job.upload)archive.upload(job.local,job.remote);else archive.download(job.remote,job.local);
+            }else{
+                ParallelTransfer transfer=new ParallelTransfer(ssh::openSftp,job.rate,job.cancelled,progress);job.channels=transfer.channels();
+                if(job.upload)transfer.upload(job.local,job.remote);else transfer.download(job.remote,job.local);
+            }
             if(!job.cancelled.get()&&job.completion!=null)job.completion.complete(channel,job);
             job.state=job.cancelled.get()?State.CANCELLED:State.COMPLETE;
-        }finally{job.channel=null;channel.disconnect();}}
+        }finally{job.channel=null;job.channels=List.of();job.walking=false;channel.disconnect();}}
         catch(Exception error){job.error=error.getMessage()==null?error.toString():error.getMessage();job.state=job.cancelled.get()?State.CANCELLED:State.FAILED;}
         events.accept((job.upload?I18n.t("上传","Upload"):I18n.t("下载","Download"))+job.status()+I18n.t("：",": ")+job.remote+(job.error.isBlank()?"":" · "+job.error));
     }

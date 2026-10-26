@@ -235,6 +235,16 @@ public final class SshConnection implements AutoCloseable {
         }
     }
 
+    /**
+     * An exec channel for a streaming command, not yet connected: the caller takes its
+     * streams, then connects and finally disconnects it.
+     */
+    public ChannelExec newExec(String command) throws JSchException {
+        ChannelExec ch = (ChannelExec) session.openChannel("exec");
+        ch.setCommand(command);
+        return ch;
+    }
+
     /** Opens an SFTP channel on this session; the caller disconnects it. */
     public ChannelSftp openSftp() throws JSchException {
         ChannelSftp ch = (ChannelSftp) session.openChannel("sftp");
