@@ -68,7 +68,7 @@ pwsh -NoProfile -File scripts/build-native.ps1
 脚本执行 Maven 全量验证，启动仅监听本机的 SSH/AI 测试服务，在 JVM 上采集反射/JNI/资源元数据，再编译完整桌面入口，执行原生验收及更新回滚测试，最后生成：
 
 ```text
-dist/lagless-desktop-native-0.2.0-rc.8.16-windows-x64.zip
+dist/lagless-desktop-native-0.2.0-rc.8.17-windows-x64.zip
 desktop/target/native/bundle/Lagless.exe
 ```
 
