@@ -61,6 +61,9 @@ public final class SessionPane extends JPanel implements AutoCloseable {
     private int draftTicks;
     private long omittedMirror;
     private final StringBuilder escape = new StringBuilder();
+    /** Longest line the mirror receives; longer runs get a line break. */
+    static final int MIRROR_LINE = 2000;
+    private int mirrorLine;
     public SessionPane(DesktopApp app, Profile profile) throws Exception {
         this(app,profile,null);
     }
@@ -300,14 +303,24 @@ public final class SessionPane extends JPanel implements AutoCloseable {
                     }
                     if(done)escape.setLength(0);
                 } else if(c==27)escape.append(c);
-                else if(c=='\n'||c=='\t'||c>=32 && c!=127)mirrorPending.append(c);
+                else if(c=='\n'){mirrorPending.append(c);mirrorLine=0;}
+                else if(c=='\t'||c>=32 && c!=127){
+                    // A full-screen program repaints with cursor moves, not newlines: its text would
+                    // grow one endless line, which a wrapping text area re-lays out on every append.
+                    if(++mirrorLine>MIRROR_LINE){mirrorPending.append('\n');mirrorLine=1;}
+                    mirrorPending.append(c);
+                }
             }
             if(mirrorPending.length()>128000){int count=mirrorPending.length()-128000;omittedMirror+=count;mirrorPending.delete(0,count);}
         }
     }
     private void refresh() {
         String incoming;long omitted;
-        synchronized(mirrorPending){incoming=mirrorPending.toString();mirrorPending.setLength(0);omitted=omittedMirror;omittedMirror=0;}
+        // A hidden mirror is not updated: output collects in the bounded buffer and arrives in
+        // one step when the mirror is shown. Updating it while hidden froze the window when an
+        // idle Claude Code kept repainting (the UI thread spent its time re-wrapping text).
+        boolean shown=mirrorViews.stream().anyMatch(Component::isShowing);
+        synchronized(mirrorPending){if(shown){incoming=mirrorPending.toString();mirrorPending.setLength(0);omitted=omittedMirror;omittedMirror=0;}else{incoming="";omitted=0;}}
         if(!incoming.isEmpty()||omitted>0){if(omitted>0)mirror.append(I18n.t("\n[镜像视图省略 ","\n[mirror view omits ")+omitted+I18n.t(" 字符；完整内容请导出日志]\n"," characters; export the log for full content]\n"));mirror.append(incoming);if(mirror.getDocument().getLength()>300000)try{mirror.getDocument().remove(0,mirror.getDocument().getLength()-250000);}catch(Exception ignored){}}
         String note=lastNotice.getAndSet(null);if(note!=null)message.setText(note);
         if(draftDirty && ++draftTicks>=10){draftTicks=0;draftDirty=false;persistDraft(draft.getText());}

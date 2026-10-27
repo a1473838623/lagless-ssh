@@ -73,6 +73,22 @@ class DesktopInteractionTest {
             assertTrue(reply.getScrollableTracksViewportWidth());wrap.doClick();assertFalse(reply.getScrollableTracksViewportWidth());assertEquals("false",app[0].preferences.get("assistant-wrap","true"));wrap.doClick();assertTrue(reply.getScrollableTracksViewportWidth());
         }catch(Exception e){throw new RuntimeException(e);}});}finally{if(app[0]!=null){SwingUtilities.invokeAndWait(app[0]::close);assertTrue(app[0].awaitShutdown(System.nanoTime()+TimeUnit.SECONDS.toNanos(10)));}}
     }
+    @Test void hiddenMirrorIsNotUpdatedAndRepaintTextIsBrokenIntoLines()throws Exception{
+        DesktopApp[] app={null};
+        try{SwingUtilities.invokeAndWait(()->{try{
+            app[0]=new DesktopApp(dir);SessionPane pane=new SessionPane(app[0],new Profile("m","m","example.invalid","user",22,"","",true,false));app[0].sessions.add(pane);
+            var append=SessionPane.class.getDeclaredMethod("appendMirror",String.class);append.setAccessible(true);
+            var refresh=SessionPane.class.getDeclaredMethod("refresh");refresh.setAccessible(true);
+            // An idle full-screen program: repaints made of cursor moves and text, never a newline.
+            StringBuilder repaint=new StringBuilder();for(int i=0;i<3000;i++)repaint.append("\u001b[24;1H✻ Thinking ").append(i).append(" · esc to interrupt");
+            append.invoke(pane,repaint.toString());
+            refresh.invoke(pane);
+            assertEquals("",pane.mirror.getText(),"a hidden mirror is not updated");
+            StringBuilder pending=(StringBuilder)field(pane,"mirrorPending");
+            assertFalse(pending.isEmpty(),"its output waits in the bounded buffer");
+            for(String line:pending.toString().split("\n"))assertTrue(line.length()<=SessionPane.MIRROR_LINE,"line of "+line.length());
+        }catch(Exception e){throw new RuntimeException(e);}});}finally{if(app[0]!=null){SwingUtilities.invokeAndWait(app[0]::close);assertTrue(app[0].awaitShutdown(System.nanoTime()+TimeUnit.SECONDS.toNanos(10)));}}
+    }
     @Test void editorWrappingSharesTextAndDoesNotCreateLogicalNewlines()throws Exception{
         DesktopApp[] app={null};
         try{SwingUtilities.invokeAndWait(()->{try{app[0]=new DesktopApp(dir);SessionPane pane=new SessionPane(app[0],new Profile("wrap","wrap","example.invalid","user",22,"","",true,false));app[0].sessions.add(pane);pane.draft.setText("echo "+"word ".repeat(100));String original=pane.draft.getText();app[0].setEditorWrap(true);assertTrue(pane.draft.getLineWrap());assertTrue(pane.inlineDraft.getLineWrap());assertEquals(original,SessionPane.currentCommand(pane.draft));assertEquals(1,pane.draft.getLineCount());app[0].setEditorWrap(false);assertFalse(pane.draft.getLineWrap());assertEquals(original,pane.inlineDraft.getText());}catch(Exception e){throw new RuntimeException(e);}});}finally{if(app[0]!=null){SwingUtilities.invokeAndWait(app[0]::close);assertTrue(app[0].awaitShutdown(System.nanoTime()+TimeUnit.SECONDS.toNanos(10)),"desktop shutdown must finish before temporary home cleanup");}}
