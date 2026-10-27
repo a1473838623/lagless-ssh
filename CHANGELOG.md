@@ -2,7 +2,7 @@
 
 The public repository starts from a sanitized source snapshot; older releases remain in the private historical archive. This page groups the user-facing changes across the small release candidates. Detailed notes remain under [`docs/releases/`](docs/releases/).
 
-## 0.2 desktop preview — current: [v0.2.0-rc.8.18](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.18)
+## 0.2 desktop preview — current: [v0.2.0-rc.8.19](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.19)
 
 The 0.2 line is a **pre-release**. It adds a cross-platform desktop workspace while retaining the independent core and terminal-only edition. Recent release candidates focus on:
 
@@ -10,6 +10,7 @@ The 0.2 line is a **pre-release**. It adds a cross-platform desktop workspace wh
 - Windows GraalVM Native Image distribution, plus bundled-runtime desktop and terminal ZIPs for Windows, Linux, and macOS where published.
 - Rendering and input fixes for interactive programs, Chinese input, clipboard use, scrollback, and auxiliary views.
 - Optional AI assistant, output mirror, plugin support, encrypted backup/restore, update and rollback.
+- Accepted Claude Code Tab suggestions are no longer replaced when typing at the start of the input, in [rc.8.19](docs/releases/0.2.0-rc.8.19.md) (Windows packages only).
 - Much faster file manager transfers (parallel channels, no size scan first, optional archive mode, no default speed limit) in [rc.8.18](docs/releases/0.2.0-rc.8.18.md) (Windows packages only).
 - Window resizes no longer close the terminal edition, and folder transfers count faster with visible progress, in [rc.8.17](docs/releases/0.2.0-rc.8.17.md) (Windows packages only).
 - Aligned menus, pop-ups that close when switching apps, a rollback that names its target version, and sturdier background sessions in [rc.8.16](docs/releases/0.2.0-rc.8.16.md).
