@@ -767,8 +767,35 @@ public final class LocalEcho {
         return true;
     }
 
-    private static boolean isDim(String pen) {
-        return pen.matches("(?s).*\\u001b\\[(?:[0-9;]*;)?2(?:;[0-9;]*)?m.*");
+    /**
+     * Whether a pen leaves text faint (SGR 2), as Claude Code draws its placeholder
+     * hint. The parameters are walked in order: a 24-bit colour such as
+     * {@code 38;2;200;200;200} contains a 2 but is not dim. Reading it as dim made
+     * colored input (an accepted Tab suggestion) look like a placeholder, and the
+     * first key typed at its start replaced the whole text.
+     */
+    static boolean isDim(String pen) {
+        boolean dim = false;
+        int at = 0;
+        while ((at = pen.indexOf("\u001b[", at)) >= 0) {
+            int end = pen.indexOf('m', at + 2);
+            if (end < 0) break;
+            String[] params = pen.substring(at + 2, end).split(";", -1);
+            for (int i = 0; i < params.length; i++) {
+                String p = params[i];
+                if (p.contains(":")) continue; // 38:2::r:g:b carries its arguments inside
+                int n;
+                try { n = p.isEmpty() ? 0 : Integer.parseInt(p); } catch (NumberFormatException e) { continue; }
+                if (n == 0 || n == 22) dim = false;
+                else if (n == 2) dim = true;
+                else if ((n == 38 || n == 48 || n == 58) && i + 1 < params.length) {
+                    if (params[i + 1].equals("5")) i += 2;
+                    else if (params[i + 1].equals("2")) i += 4;
+                }
+            }
+            at = end + 1;
+        }
+        return dim;
     }
 
     /** The code point of a token that is a single printable character, else -1. */

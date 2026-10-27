@@ -56,7 +56,7 @@ public final class DesktopApp implements AutoCloseable {
         DesktopRuntime.bootstrap();
         Path home=Path.of(System.getProperty("user.home"),".lagless");
         ApplicationJournal runLog;
-        try{runLog=new ApplicationJournal(home);runLog.installErrorHandler();}
+        try{runLog=new ApplicationJournal(home);runLog.installErrorHandler();ApplicationJournal journal=runLog;UiWatchdog.start(message->journal.record(null,message));}
         catch(IOException error){throw new UncheckedIOException(I18n.t("无法创建软件运行日志","Cannot create the application log"),error);}
         if (GraphicsEnvironment.isHeadless()) { runLog.record(null,I18n.t("没有图形桌面，结束本次运行","No graphical desktop; exiting"));runLog.close();System.err.println("lagless gui requires a graphical desktop."); return; }
         SwingUtilities.invokeLater(() -> {

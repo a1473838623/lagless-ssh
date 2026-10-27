@@ -39,6 +39,29 @@ class LocalLineTest {
         return terminal.rowText(INPUT).replace(' ', ' ').stripTrailing();
     }
 
+    @Test void coloredTextAfterTheCursorIsInputNotAPlaceholder() {
+        startClaude();
+        // Tab accepted a suggestion, which Claude Code draws in a 24-bit colour; the user then
+        // moved the cursor to the start of the input.
+        remote("\u001b[?25l\u001b[21;1H❯ \u001b[38;2;177;185;249mfix the failing tests\u001b[39m\u001b[K\u001b[21;3H\u001b[?25h");
+        key("x");
+        assertFalse(echo.isEditingLine(), "typing at the start of existing input must not start a local line over it");
+        assertEquals("x", sent.toString(), "the key goes straight to Claude Code");
+        assertTrue(input().contains("fix the failing tests"), "the existing text stays on screen: " + input());
+    }
+
+    @Test void onlyFaintTextCountsAsDim() {
+        assertTrue(LocalEcho.isDim("\u001b[2m"));
+        assertTrue(LocalEcho.isDim("\u001b[0;2;38;2;1;2;3m"));
+        assertFalse(LocalEcho.isDim("\u001b[2m\u001b[22m"));
+        assertFalse(LocalEcho.isDim("\u001b[2m\u001b[0m"));
+        assertFalse(LocalEcho.isDim("\u001b[38;2;200;200;200m"), "24-bit colour is not dim");
+        assertFalse(LocalEcho.isDim("\u001b[38;5;2m"), "palette colour 2 is not dim");
+        assertFalse(LocalEcho.isDim("\u001b[48;2;2;2;2m"));
+        assertTrue(LocalEcho.isDim("\u001b[38;2;9;9;9;2m"), "dim after a 24-bit colour");
+        assertFalse(LocalEcho.isDim(""));
+    }
+
     @Test void modeChangeMustNotResetAnUnsentLocalLine() {
         startClaude();assertFalse(echo.hasBufferedInput());key("unsent");assertTrue(echo.hasBufferedInput());assertEquals("",sent.toString());key("\u0015");key("\u007f");assertFalse(echo.hasBufferedInput());
     }
