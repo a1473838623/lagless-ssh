@@ -18,6 +18,8 @@ jobs:
         run: ./scripts/build-dist.ps1 -Edition both
       - uses: actions/upload-artifact@v4
         with:
+          # Copied to the release right after the run; keeping them would use storage quota.
+          retention-days: 1
           name: lagless-windows-latest
           path: |
             dist/*.zip

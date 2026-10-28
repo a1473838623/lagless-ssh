@@ -11,7 +11,8 @@ import java.util.function.Consumer;
 
 /** Recursive SFTP with a shared bandwidth budget and staged replacement of each file. */
 final class SftpTransfers {
-    record Entry(String name,boolean directory,boolean link,long size,boolean regular){public String toString(){return name+(link?I18n.t(" (链接)"," (link)"):"");}}
+    /** {@code modified} in milliseconds; SFTP version 3 (OpenSSH) reports no creation time. */
+    record Entry(String name,boolean directory,boolean link,long size,boolean regular,long modified){public String toString(){return name+(link?I18n.t(" (链接)"," (link)"):"");}}
     /** One bandwidth budget shared by every channel of a transfer; {@code rate} 0 means unlimited. */
     static final class Throttle {
         private final long rate;private long nextPermit=System.nanoTime();
@@ -42,7 +43,7 @@ final class SftpTransfers {
     }
     SftpTransfers(ChannelSftp channel,long rate,AtomicBoolean cancelled,LongConsumer progress,Consumer<String> current)throws JSchException{this(channel,rate,cancelled,progress);this.current=current;}
     static List<Entry> list(ChannelSftp channel,String path)throws SftpException{
-        List<Entry> result=new ArrayList<>();for(var item:channel.ls(path)){String name=item.getFilename();if(name.equals(".")||name.equals(".."))continue;var a=item.getAttrs();result.add(new Entry(name,a.isDir(),a.isLink(),a.getSize(),a.isReg()));}
+        List<Entry> result=new ArrayList<>();for(var item:channel.ls(path)){String name=item.getFilename();if(name.equals(".")||name.equals(".."))continue;var a=item.getAttrs();result.add(new Entry(name,a.isDir(),a.isLink(),a.getSize(),a.isReg(),a.getMTime()*1000L));}
         result.sort(Comparator.comparing(Entry::directory).reversed().thenComparing(Entry::name,String.CASE_INSENSITIVE_ORDER));return result;
     }
     static String child(String parent,String name)throws IOException{validName(name);return (parent.endsWith("/")?parent:parent+"/")+name;}

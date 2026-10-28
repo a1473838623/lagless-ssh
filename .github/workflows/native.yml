@@ -33,11 +33,15 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "Update check exited with code $($p.ExitCode)" }
       - uses: actions/upload-artifact@v4
         with:
+          # Copied to the release right after the run; keeping them would use storage quota.
+          retention-days: 1
           name: lagless-native-windows-latest
           path: dist/lagless-desktop-native-*.zip
       - uses: actions/upload-artifact@v4
         if: always()
         with:
+          # Copied to the release right after the run; keeping them would use storage quota.
+          retention-days: 1
           name: native-diagnostics-windows-latest
           path: |
             desktop/target/native/*report.json

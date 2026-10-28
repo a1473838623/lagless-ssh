@@ -28,17 +28,34 @@ final class TransferDialog {
     private final List<JComponent> localControls=new ArrayList<>(),remoteControls=new ArrayList<>();
     private final JProgressBar localLoading=new JProgressBar(),remoteLoading=new JProgressBar();
     private ClipboardFiles clipboard;
+    /** Sort keys of both file lists; folders always come first. */
+    enum SortKey{NAME,SIZE,MODIFIED,CREATED}
+    private final JComboBox<String> sortBy=new JComboBox<>(new String[]{I18n.t("名称","Name"),I18n.t("大小","Size"),I18n.t("修改时间","Modified"),I18n.t("创建时间","Created")});
+    private final JToggleButton descending=new JToggleButton("↓");
+    private final JCheckBox details=new JCheckBox(I18n.t("详细信息","Details"));
+    private LocalListing lastLocal;private Listing lastRemote;
+    private static final java.time.format.DateTimeFormatter WHEN=java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(java.time.ZoneId.systemDefault());
     private record ClipboardFiles(boolean remote,boolean cut,List<Path> local,List<String> paths){}
     TransferDialog(SessionPane pane){
         this.pane=pane;queue=pane.transferQueue();dialog=new JDialog(DesktopApp.ownerWindow(pane),pane.profile.name()+I18n.t(" · 文件管理"," · Files"),Dialog.ModalityType.MODELESS);dialog.setLayout(new BorderLayout(8,8));
-        local.setCellRenderer((list,path,index,chosen,focus)->label(path.getFileName().toString(),chosen,Files.isDirectory(path,LinkOption.NOFOLLOW_LINKS),Files.isSymbolicLink(path)));
-        remote.setCellRenderer((list,entry,index,chosen,focus)->label(entry.name(),chosen,entry.directory(),entry.link()));local.setFixedCellHeight(32);remote.setFixedCellHeight(32);
+        // Attributes were read with the listing: painting a row never touches the disk.
+        local.setCellRenderer((list,path,index,chosen,focus)->{var a=lastLocal==null?null:lastLocal.attributes().get(path);boolean folder=a!=null&&a.isDirectory();
+            return row(label(path.getFileName().toString(),chosen,folder,a!=null&&a.isSymbolicLink()),chosen,folder||a==null?-1:a.size(),a==null?-1:a.lastModifiedTime().toMillis(),a==null?-1:a.creationTime().toMillis());});
+        remote.setCellRenderer((list,entry,index,chosen,focus)->row(label(entry.name(),chosen,entry.directory(),entry.link()),chosen,entry.directory()?-1:entry.size(),entry.modified(),-1));local.setFixedCellHeight(32);remote.setFixedCellHeight(32);
         JSplitPane browsers=new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,browser(I18n.t("本地","Local"),localPath,local,this::localUp,this::refreshLocal),browser(I18n.t("远端","Remote"),remotePath,remote,this::remoteUp,this::refreshRemote));browsers.setResizeWeight(.5);browsers.setDividerLocation(500);browsers.setBorder(null);
         localPath.addActionListener(e->refreshLocal());remotePath.addActionListener(e->refreshRemote());
         local.addMouseListener(new MouseAdapter(){public void mouseClicked(MouseEvent e){if(e.getClickCount()==2&&!localBusy)open(false);}});
         remote.addMouseListener(new MouseAdapter(){public void mouseClicked(MouseEvent e){if(e.getClickCount()==2&&!remoteBusy)open(true);}});
         JPanel actions=DesktopApp.row();actions.setBorder(BorderFactory.createEmptyBorder(6,8,6,8));actions.add(DesktopApp.button(I18n.t("上传 →","Upload →"),this::upload));actions.add(DesktopApp.button(I18n.t("← 加入下载队列","← Queue download"),this::download));actions.add(new JLabel(I18n.t("限速 KiB/s","Limit KiB/s")));limit.setColumns(6);limit.putClientProperty("JTextField.placeholderText",I18n.t("不限","none"));limit.setToolTipText(I18n.t("留空或 0 表示不限速","Leave empty or 0 for no limit"));actions.add(limit);
         archive.setName("transfer-archive");archive.setSelected(Boolean.parseBoolean(pane.app.preferences.get("transfer-archive","false")));archive.addActionListener(e->pane.app.preferences.set("transfer-archive",Boolean.toString(archive.isSelected())));
+        int savedSort;try{savedSort=SortKey.valueOf(pane.app.preferences.get("files-sort","NAME")).ordinal();}catch(IllegalArgumentException e){savedSort=0;}
+        sortBy.setSelectedIndex(savedSort);descending.setSelected(Boolean.parseBoolean(pane.app.preferences.get("files-sort-descending","false")));details.setSelected(Boolean.parseBoolean(pane.app.preferences.get("files-details","true")));
+        descending.setToolTipText(I18n.t("切换升序 / 降序","Ascending / descending"));details.setToolTipText(I18n.t("显示大小、修改时间和创建时间。SFTP 不提供远端文件的创建时间。","Show size, modified and created time. SFTP does not report creation time for remote files."));
+        sortBy.setName("files-sort");details.setName("files-details");
+        Runnable resort=()->{pane.app.preferences.set("files-sort",SortKey.values()[sortBy.getSelectedIndex()].name());pane.app.preferences.set("files-sort-descending",Boolean.toString(descending.isSelected()));pane.app.preferences.set("files-details",Boolean.toString(details.isSelected()));
+            descending.setText(descending.isSelected()?"↑":"↓");if(lastLocal!=null)showLocal(lastLocal);if(lastRemote!=null)showRemote(lastRemote);local.repaint();remote.repaint();};
+        sortBy.addActionListener(e->resort.run());descending.addActionListener(e->resort.run());details.addActionListener(e->resort.run());descending.setText(descending.isSelected()?"↑":"↓");
+        actions.add(new JLabel(I18n.t("排序","Sort by")));actions.add(sortBy);actions.add(descending);actions.add(details);
         archive.setToolTipText(I18n.t("文件夹作为一个压缩流（tar.gz）传输，不在任一端生成归档文件；大量小文件时更快。需要服务器有 tar 和 gzip。单个文件仍按普通方式传输。","Folders go as one compressed stream (tar.gz); no archive file is written on either side. Faster for many small files. Needs tar and gzip on the server. Single files still transfer normally."));actions.add(archive);
         JPanel top=new JPanel(new BorderLayout());top.add(browsers,BorderLayout.CENTER);top.add(actions,BorderLayout.SOUTH);
         tasks.setName("transfer-queue");tasks.setRowHeight(30);tasks.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);tasks.setDefaultRenderer(TransferQueue.Job.class,(table,value,selected,focus,row,column)->{TransferQueue.Job job=(TransferQueue.Job)value;JProgressBar progress=new JProgressBar(0,100);progress.setValue(job.percent());progress.setStringPainted(true);progress.setString(job.state==TransferQueue.State.SCANNING?I18n.t("统计中…","Counting…"):job.progressText());return progress;});
@@ -84,16 +101,52 @@ final class TransferDialog {
     }
     private void localUp(){if(busy(false))return;Path p=localDirectory.getParent();if(p!=null){localPath.setText(p.toString());refreshLocal();}}
     private void remoteUp(){if(busy(true))return;remotePath.setText(remoteDirectory.replaceAll("/+$","")+"/..");refreshRemote();}
-    private record LocalListing(Path path,List<Path> entries){}
+    private record LocalListing(Path path,List<Path> entries,Map<Path,java.nio.file.attribute.BasicFileAttributes> attributes){}
     private void refreshLocal(){
         if(closed)return;if(localBusy){localReload=true;return;}String path=localPath.getText();
-        work(false,I18n.t("正在加载文件夹…","Loading folder…"),()->{Path directory=Path.of(path).toAbsolutePath().normalize();if(!Files.isDirectory(directory))throw new IOException(I18n.t("本地目录不存在","Local folder does not exist"));try(var files=Files.list(directory)){return new LocalListing(directory,files.sorted(Comparator.comparing((Path p)->Files.isDirectory(p,LinkOption.NOFOLLOW_LINKS)).reversed().thenComparing(p->p.getFileName().toString(),String.CASE_INSENSITIVE_ORDER)).toList());}},listing->{localDirectory=listing.path();localPath.setText(localDirectory.toString());localModel.clear();listing.entries().forEach(localModel::addElement);});
+        work(false,I18n.t("正在加载文件夹…","Loading folder…"),()->{Path directory=Path.of(path).toAbsolutePath().normalize();if(!Files.isDirectory(directory))throw new IOException(I18n.t("本地目录不存在","Local folder does not exist"));try(var files=Files.list(directory)){Map<Path,java.nio.file.attribute.BasicFileAttributes> attributes=new HashMap<>();List<Path> entries=files.toList();
+                for(Path p:entries)try{attributes.put(p,Files.readAttributes(p,java.nio.file.attribute.BasicFileAttributes.class,LinkOption.NOFOLLOW_LINKS));}catch(IOException unreadable){}
+                return new LocalListing(directory,entries,attributes);}},listing->{localDirectory=listing.path();localPath.setText(localDirectory.toString());showLocal(listing);});
     }
     private record Listing(String path,List<SftpTransfers.Entry> entries){}
     private void refreshRemote(){
         if(closed)return;if(remoteBusy){remoteReload=true;return;}String path=remotePath.getText();
-        work(true,I18n.t("正在加载文件夹…","Loading folder…"),()->{ChannelSftp channel=pane.requireConnection().openSftp();try{channel.cd(path);return new Listing(channel.pwd(),SftpTransfers.list(channel,"."));}finally{channel.disconnect();}},listing->{remoteDirectory=listing.path();remotePath.setText(remoteDirectory);remoteModel.clear();listing.entries().forEach(remoteModel::addElement);});
+        work(true,I18n.t("正在加载文件夹…","Loading folder…"),()->{ChannelSftp channel=pane.requireConnection().openSftp();try{channel.cd(path);return new Listing(channel.pwd(),SftpTransfers.list(channel,"."));}finally{channel.disconnect();}},listing->{remoteDirectory=listing.path();remotePath.setText(remoteDirectory);showRemote(listing);});
     }
+    private SortKey sortKey(){return SortKey.values()[Math.max(0,sortBy.getSelectedIndex())];}
+    /** Folders first, then the chosen key; names break ties. Missing values (remote creation time) sort last. */
+    static <T> Comparator<T> order(SortKey key,boolean descending,java.util.function.Predicate<T> folder,java.util.function.Function<T,String> name,java.util.function.ToLongFunction<T> size,java.util.function.ToLongFunction<T> modified,java.util.function.ToLongFunction<T> created){
+        Comparator<T> byName=Comparator.comparing(name,String.CASE_INSENSITIVE_ORDER);
+        Comparator<T> chosen=switch(key){case NAME->byName;case SIZE->Comparator.comparingLong(size);case MODIFIED->Comparator.comparingLong(modified);case CREATED->Comparator.comparingLong(created);};
+        if(descending)chosen=chosen.reversed();
+        return Comparator.comparing((T item)->!folder.test(item)).thenComparing(chosen).thenComparing(byName);
+    }
+    private void showLocal(LocalListing listing){
+        lastLocal=listing;List<Path> selected=local.getSelectedValuesList();var a=listing.attributes();
+        List<Path> sorted=new ArrayList<>(listing.entries());
+        sorted.sort(order(sortKey(),descending.isSelected(),p->a.get(p)!=null&&a.get(p).isDirectory(),p->p.getFileName().toString(),p->a.get(p)==null?-1:a.get(p).size(),p->a.get(p)==null?-1:a.get(p).lastModifiedTime().toMillis(),p->a.get(p)==null?-1:a.get(p).creationTime().toMillis()));
+        localModel.clear();sorted.forEach(localModel::addElement);reselect(local,selected);
+    }
+    private void showRemote(Listing listing){
+        lastRemote=listing;List<SftpTransfers.Entry> selected=remote.getSelectedValuesList();
+        List<SftpTransfers.Entry> sorted=new ArrayList<>(listing.entries());
+        sorted.sort(order(sortKey(),descending.isSelected(),SftpTransfers.Entry::directory,SftpTransfers.Entry::name,e->e.directory()?-1:e.size(),SftpTransfers.Entry::modified,e->-1));
+        remoteModel.clear();sorted.forEach(remoteModel::addElement);reselect(remote,selected);
+    }
+    private static <T> void reselect(JList<T> list,List<T> selected){
+        if(selected.isEmpty())return;List<Integer> rows=new ArrayList<>();
+        for(int i=0;i<list.getModel().getSize();i++)if(selected.contains(list.getModel().getElementAt(i)))rows.add(i);
+        list.setSelectedIndices(rows.stream().mapToInt(Integer::intValue).toArray());
+    }
+    /** A file row: the name, then size, modified and created in fixed columns when details are shown. */
+    private Component row(JLabel name,boolean chosen,long size,long modified,long created){
+        if(!details.isSelected())return name;
+        JPanel row=new JPanel(new BorderLayout());row.setOpaque(true);row.setBackground(name.getBackground());row.add(name,BorderLayout.CENTER);
+        JPanel columns=new JPanel(new FlowLayout(FlowLayout.RIGHT,0,0));columns.setOpaque(false);
+        columns.add(cell(size<0?"":size(size),76,SwingConstants.RIGHT));columns.add(cell(modified<=0?"—":WHEN.format(java.time.Instant.ofEpochMilli(modified)),130,SwingConstants.RIGHT));columns.add(cell(created<=0?"—":WHEN.format(java.time.Instant.ofEpochMilli(created)),130,SwingConstants.RIGHT));
+        row.add(columns,BorderLayout.EAST);return row;
+    }
+    private static JLabel cell(String text,int width,int align){JLabel cell=new JLabel(text,align);cell.setForeground(Theme.MUTED);cell.setFont(DesktopFonts.ui().deriveFont(12f));cell.setPreferredSize(new Dimension(width,30));cell.setBorder(BorderFactory.createEmptyBorder(0,0,0,10));return cell;}
     private List<Path> selectedLocal()throws IOException{
         List<Path> selected=local.getSelectedValuesList();if(selected.isEmpty())throw new IOException(I18n.t("请选择文件或文件夹","Select a file or folder"));
         for(Path path:selected)if(!FileActions.localChild(localDirectory,path.getFileName().toString()).equals(path.toAbsolutePath().normalize()))throw new IOException(I18n.t("文件不在当前目录","File is not in the current folder"));return selected;
