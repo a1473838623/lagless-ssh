@@ -2,7 +2,7 @@
 
 **网络卡顿时，也能顺畅地使用 SSH。** Lagless 让你先在本地流畅输入和修改命令，再由 SSH 在后台传输；它既能在现有终端中运行，也提供图形客户端。服务器无需安装任何东西。
 
-[English](README.md) · [下载当前桌面预发布版](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.20) · [完整演示图库](docs/gallery.md) · [更新记录](CHANGELOG.md) · [Apache-2.0 协议](LICENSE) · [LINUX DO 社区](https://linux.do/)
+[English](README.md) · [下载当前桌面预发布版](https://github.com/a1473838623/lagless-ssh/releases/tag/v0.2.0-rc.8.21) · [完整演示图库](docs/gallery.md) · [更新记录](CHANGELOG.md) · [Apache-2.0 协议](LICENSE) · [LINUX DO 社区](https://linux.do/)
 
 ## 为什么需要 Lagless？
 
@@ -54,7 +54,7 @@ Linux/macOS 用 `./lagless gui`。桌面端复用原有低延迟终端内核，�
 
 源码构建为 `mvn package`，桌面产物为 `desktop/target/lagless-desktop-standalone.jar`；完整运行时打包脚本默认分别生成终端包和图形包，也可用 `-Edition terminal` 只构建终端包。仓库 CI 配置为三平台官方修复版 JDK 25 构建，源码最低目标仍为 Java 21。当前本机已验证的平台与未验收部分见桌面说明。
 
-桌面也支持真正的 **GraalVM Native Image 原生包**：解压 `lagless-desktop-native-<版本>-windows-x64.zip` 后双击 `Lagless.exe`，不需要 Java。rc.8.20 使用 Oracle 官方已修复 CVE-2026-91403 的 GraalVM 25.0.5 安全更新线构建 Windows 原生 EXE；含运行时的桌面和终端包使用 Oracle JDK 25.0.5.0.2。详见 [本次发布说明](docs/releases/0.2.0-rc.8.20.md) 和 [原生桌面版](docs/native-image.md)。
+桌面也支持真正的 **GraalVM Native Image 原生包**：解压 `lagless-desktop-native-<版本>-windows-x64.zip` 后双击 `Lagless.exe`，不需要 Java。rc.8.21 使用 Oracle 官方已修复 CVE-2026-91403 的 GraalVM 25.0.5 安全更新线构建 Windows 原生 EXE；含运行时的桌面和终端包使用 Oracle JDK 25.0.5.0.2。详见 [本次发布说明](docs/releases/0.2.0-rc.8.21.md) 和 [原生桌面版](docs/native-image.md)。
 
 ## 终端核心如何工作
 

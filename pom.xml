@@ -4,7 +4,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>dev.lagless</groupId>
   <artifactId>lagless-ssh</artifactId>
-  <version>0.2.0-rc.8.20</version>
+  <version>0.2.0-rc.8.21</version>
   <packaging>pom</packaging>
   <name>Lagless SSH</name>
   <description>Shared low-latency SSH core, standalone terminal and optional desktop client</description>
