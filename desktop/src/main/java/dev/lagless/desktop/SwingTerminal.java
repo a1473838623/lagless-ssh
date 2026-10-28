@@ -70,6 +70,10 @@ public final class SwingTerminal extends JComponent implements AutoCloseable,Inp
     private Consumer<String> notice = text -> { };
     private java.util.function.Supplier<Clipboard> clipboard;
     private Point selectionStart, selectionEnd;
+    // A selection made on a full-screen application's live screen counts rows in the
+    // tracker's document, so it stays on its text when the application scrolls.
+    private final ScrollTracker tracker=new ScrollTracker();
+    private boolean trackedSelection,dragging,trackedAlt;private long selectionGeneration;private Point dragAt;
     private final JPanel surface=new JPanel(new BorderLayout());
     private final JScrollBar historyBar=new JScrollBar(JScrollBar.VERTICAL);
     private final ThreadPoolExecutor historyReader=new ThreadPoolExecutor(1,1,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(1),r->{Thread t=new Thread(r,"lagless-scrollback-reader");t.setDaemon(true);return t;},new ThreadPoolExecutor.DiscardOldestPolicy());
@@ -108,7 +112,7 @@ public final class SwingTerminal extends JComponent implements AutoCloseable,Inp
         }
     }
     private void publishLiveFrame(){
-        completedLiveFrame=livePaintFrame();presentationPending=false;redrawSince=0;
+        completedLiveFrame=livePaintFrame(true);presentationPending=false;redrawSince=0;
         if(followLive)invalidateFrame();
     }
     private void presentPending(long now){
@@ -339,17 +343,26 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
                 remoteWheelQueue.cancel();
                 requestFocusInWindow();wheelPositionValid=false;scrollOffset=0;
                 if (SwingUtilities.isLeftMouseButton(e)) {
-                    Point at=documentCell(e);
-                    if(!e.isShiftDown()||selectionStart==null)selectionStart=at;
-                    selectionEnd=at;dirty=true;
+                    ScrollTracker.Track track=liveTrack();
+                    Point at=track!=null?trackedCell(e.getX(),e.getY(),track):documentCell(e);
+                    if(!e.isShiftDown()||selectionStart==null||trackedSelection!=(track!=null)){
+                        selectionStart=at;trackedSelection=track!=null;if(track!=null)selectionGeneration=track.generation();
+                    }
+                    selectionEnd=at;dragging=true;dragAt=e.getPoint();dirty=true;
                 }
                 if (e.isPopupTrigger() || SwingUtilities.isRightMouseButton(e)) {
                     popupMenu().show(SwingTerminal.this,e.getX(),e.getY());
                 }
             }
+            @Override public void mouseReleased(MouseEvent e){if(SwingUtilities.isLeftMouseButton(e))dragging=false;}
         });
         addMouseMotionListener(new MouseMotionAdapter() {
-            @Override public void mouseDragged(MouseEvent e) { selectionEnd = documentCell(e); dirty = true; }
+            @Override public void mouseDragged(MouseEvent e) {
+                dragAt=e.getPoint();
+                if(!trackedSelection)selectionEnd=documentCell(e);
+                else{ScrollTracker.Track track=liveTrack();if(track!=null)selectionEnd=trackedCell(e.getX(),e.getY(),track);}
+                dirty = true;
+            }
         });
         addComponentListener(new ComponentAdapter() { @Override public void componentResized(ComponentEvent e) { resizeTerminal(); } });
         addFocusListener(new FocusAdapter(){public void focusGained(FocusEvent e){cursorEpoch=System.nanoTime();cursorOn=true;dirty=true;}public void focusLost(FocusEvent e){remoteWheelQueue.cancel();composition="";compositionCaret=0;dirty=true;}});
@@ -517,16 +530,36 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
         long first=followLive?(history==null?0:history.count()):displayStart;
         return new Point(Math.min(columns-1,cell.x),(int)Math.min(Integer.MAX_VALUE,first+Math.min(rows-1,row)));
     }
+    private ScrollTracker.Track liveTrack(){PaintFrame shown=cachedFrame;return followLive&&shown!=null?shown.track():null;}
+    /** The document cell under a point of the live screen; fixed rows map to the nearest scrolling row. */
+    private Point trackedCell(int x,int y,ScrollTracker.Track track){
+        int columns;synchronized(screen){columns=screen.cols();}
+        int row=Math.max(track.regionTop(),Math.min(track.regionBottom(),Math.max(0,y)/Math.max(1,cellHeight)));
+        return new Point(Math.max(0,Math.min(columns-1,x/Math.max(1,cellWidth))),(int)(track.top()+row));
+    }
+    /** Keeps a tracked selection in step with the frame now shown. */
+    private void followTrackedSelection(){
+        if(!trackedSelection||selectionStart==null||!followLive||cachedFrame==null)return;
+        ScrollTracker.Track track=cachedFrame.track();
+        if(track==null||track.generation()!=selectionGeneration){selectionStart=selectionEnd=null;trackedSelection=false;return;}
+        // While the button is held, the end stays under the pointer as the content scrolls.
+        if(dragging&&dragAt!=null)selectionEnd=trackedCell(dragAt.x,dragAt.y,track);
+    }
     private record SelectionRange(int from,int to){}
     private SelectionRange selectionRange(PaintFrame frame){
         if(selectionStart==null||selectionEnd==null||selectionStart.equals(selectionEnd))return new SelectionRange(-1,-1);
         Point start=compare(selectionStart,selectionEnd)<=0?selectionStart:selectionEnd;
         Point end=start==selectionStart?selectionEnd:selectionStart;
-        long base=frame.firstLine(),length=(long)frame.columns()*frame.rows();
+        long base=frame.firstLine(),length=(long)frame.columns()*frame.rows(),lowest=0,highest=length-1;
+        if(trackedSelection){
+            ScrollTracker.Track track=frame.track();
+            if(track==null||track.generation()!=selectionGeneration)return new SelectionRange(-1,-1);
+            base=track.top();lowest=(long)track.regionTop()*frame.columns();highest=(track.regionBottom()+1L)*frame.columns()-1;
+        }
         long from=((long)start.y-base)*frame.columns()+start.x;
         long to=((long)end.y-base)*frame.columns()+end.x;
-        if(to<0||from>=length)return new SelectionRange(-1,-1);
-        return new SelectionRange((int)Math.max(0,from),(int)Math.min(length-1,to));
+        if(to<lowest||from>highest)return new SelectionRange(-1,-1);
+        return new SelectionRange((int)Math.max(lowest,from),(int)Math.min(highest,to));
     }
     boolean hasSelection(){return selectionStart!=null&&selectionEnd!=null&&!selectionStart.equals(selectionEnd);}
     private static int compare(Point a,Point b){int row=Integer.compare(a.y,b.y);return row!=0?row:Integer.compare(a.x,b.x);}
@@ -534,6 +567,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
         if(selectionStart==null||selectionEnd==null||selectionStart.equals(selectionEnd))return displayedText();
         Point start=compare(selectionStart,selectionEnd)<=0?selectionStart:selectionEnd;
         Point end=start==selectionStart?selectionEnd:selectionStart;
+        if(trackedSelection)return trackedText(start,end);
         long count=history==null?0:history.count();int columns;synchronized(screen){columns=screen.cols();}
         StringBuilder text=new StringBuilder();
         for(int row=start.y;row<=end.y;row++){
@@ -554,6 +588,23 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
             wrapped&=lastColumn>=(historical!=null?historical.cols():columns)-1;
             text.append(wrapped?line:line.toString().stripTrailing());
             if(row<end.y&&!wrapped)text.append('\n');
+        }
+        return text.toString();
+    }
+    /** A tracked selection's text, including rows that have scrolled out of view. */
+    private String trackedText(Point start,Point end){
+        StringBuilder text=new StringBuilder();
+        synchronized(screen){
+            ScrollTracker.Track track=tracker.track();
+            if(track==null||track.generation()!=selectionGeneration)return "";
+            for(int row=start.y;row<=end.y;row++){
+                int[] cells=tracker.line(row);int columns=cells==null?screen.cols():cells.length;
+                int lastColumn=row==end.y?Math.min(end.x,columns-1):columns-1;
+                StringBuilder line=new StringBuilder();
+                if(cells!=null)for(int col=row==start.y?start.x:0;col<=lastColumn;col++)if(cells[col]>=0)line.appendCodePoint(cells[col]);
+                text.append(line.toString().stripTrailing());
+                if(row<end.y)text.append('\n');
+            }
         }
         return text.toString();
     }
@@ -584,11 +635,18 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
         if(!screen.synchronizedOutput()&&(localEditing||redrawSince==0))publishLiveFrame();
         if(!followLive&&(history==null||historyPage.isEmpty()||displayStart+screen.rows()>history.count()))invalidateFrame();
     }
-    static record PaintFrame(int columns,int rows,int[] characters,String[] pens,int cursorRow,int cursorColumn,boolean cursorVisible,long firstLine){}
-    private PaintFrame livePaintFrame(){
+    /** {@code track} places a full-screen application's live frame in the scroll tracker's document; null otherwise. */
+    static record PaintFrame(int columns,int rows,int[] characters,String[] pens,int cursorRow,int cursorColumn,boolean cursorVisible,long firstLine,ScrollTracker.Track track){}
+    private PaintFrame livePaintFrame(){return livePaintFrame(false);}
+    /** {@code finished}: a complete frame, which the scroll tracker compares with the previous one. */
+    private PaintFrame livePaintFrame(boolean finished){
         int columns=screen.cols(),rows=screen.rows()+1;int[] chars=new int[columns*rows];String[] pens=new String[chars.length];
         for(int r=0;r<rows;r++)for(int c=0;c<columns;c++){int i=r*columns+c;chars[i]=screen.charAt(r,c);pens[i]=screen.penAt(r,c);}
-        return new PaintFrame(columns,rows,chars,pens,screen.row(),screen.col(),screen.cursorVisible(),history==null?0:history.count());
+        boolean alt=screen.altScreen();if(alt!=trackedAlt&&tracker.active())tracker.reset();trackedAlt=alt;
+        ScrollTracker.Track track=null;
+        if(!realtimeHistory(screen)){if(tracker.active())tracker.reset();}
+        else track=finished?tracker.frame(columns,screen.rows(),chars):tracker.track();
+        return new PaintFrame(columns,rows,chars,pens,screen.row(),screen.col(),screen.cursorVisible(),history==null?0:history.count(),track);
     }
     private void refreshCachedFrame(){
         synchronized(screen){
@@ -597,6 +655,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
                 if(followLive){if(completedLiveFrame==null)completedLiveFrame=livePaintFrame();cachedFrame=completedLiveFrame;}
                 else cachedFrame=paintFrame();
             }
+            followTrackedSelection();
         }
     }
     private PaintFrame paintFrame(){
@@ -604,7 +663,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
         synchronized(screen){
             int columns=screen.cols(),rows=screen.rows()+1;int[] characters=new int[columns*rows];String[] pens=new String[characters.length];
             for(int r=0;r<rows;r++)for(int c=0;c<columns;c++){int at=r*columns+c;characters[at]=visibleChar(r,c,count);pens[at]=visiblePen(r,c,count);}
-            return new PaintFrame(columns,rows,characters,pens,screen.row(),screen.col(),followLive&&screen.cursorVisible(),history==null?0:followLive||historyPage.isEmpty()?count:displayStart);
+            return new PaintFrame(columns,rows,characters,pens,screen.row(),screen.col(),followLive&&screen.cursorVisible(),history==null?0:followLive||historyPage.isEmpty()?count:displayStart,null);
         }
     }
     @Override protected void paintComponent(Graphics graphics) {

@@ -10,6 +10,7 @@ import java.awt.image.BufferedImage;
 import java.awt.event.*;
 import java.nio.file.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DesktopInteractionTest {
@@ -151,6 +152,53 @@ class DesktopInteractionTest {
             var selected=terminal.getSelectedText(null);StringBuilder copied=new StringBuilder();for(char c=selected.first();c!=java.text.CharacterIterator.DONE;c=selected.next())copied.append(c);
             assertEquals("row-005\nrow-00",copied.toString());
         }finally{SwingUtilities.invokeAndWait(view[0]::close);history.close();}
+    }
+    static String selected(SwingTerminal terminal){var selected=terminal.getSelectedText(null);StringBuilder copied=new StringBuilder();for(char c=selected.first();c!=java.text.CharacterIterator.DONE;c=selected.next())copied.append(c);return copied.toString();}
+    /** A full-screen application's frame showing items from {@code first}, drawn as one synchronized update. */
+    static String itemFrame(int rows,int first){StringBuilder frame=new StringBuilder("\u001b[?2026h\u001b[H\u001b[2J");for(int r=0;r<rows;r++){if(r>0)frame.append("\r\n");frame.append(String.format("item-%03d",first+r));}return frame.append("\u001b[?2026l").toString();}
+    @Test void fullScreenSelectionFollowsScrolledTextAndGrowsWhileDragging()throws Exception{
+        SwingTerminal[] view={null};SwingUtilities.invokeAndWait(()->{view[0]=new SwingTerminal();view[0].setSize(900,400);});
+        try{
+            // The resize event queued by setSize has run once the queue is flushed.
+            SwingUtilities.invokeAndWait(()->{});int[] grid={0,0};SwingUtilities.invokeAndWait(()->{int[] size=view[0].gridSize();grid[0]=size[0];grid[1]=size[1];});
+            SwingTerminal terminal=view[0];int columns=grid[0],rows=grid[1];
+            var refresh=SwingTerminal.class.getDeclaredMethod("refreshCachedFrame");refresh.setAccessible(true);
+            var cached=SwingTerminal.class.getDeclaredField("cachedFrame");cached.setAccessible(true);
+            var range=SwingTerminal.class.getDeclaredMethod("selectionRange",SwingTerminal.PaintFrame.class);range.setAccessible(true);
+            Callable<String> highlighted=()->{String[] shown={null};SwingUtilities.invokeAndWait(()->{try{refresh.invoke(terminal);Object r=range.invoke(terminal,cached.get(terminal));shown[0]=r.toString();}catch(Exception e){throw new RuntimeException(e);}});return shown[0];};
+            Consumer<Integer> show=first->{try{SwingUtilities.invokeAndWait(()->{terminal.display(itemFrame(rows,first));try{refresh.invoke(terminal);}catch(Exception e){throw new RuntimeException(e);}});}catch(Exception e){throw new RuntimeException(e);}};
+            var metrics=terminal.getFontMetrics(terminal.getFont());int cellWidth=metrics.charWidth('M');
+            int cellHeight=metrics.getHeight()+Math.max(2,metrics.getMaxAscent()-metrics.getAscent()+2);
+            BiConsumer<Integer,int[]> mouse=(id,cell)->{try{SwingUtilities.invokeAndWait(()->terminal.dispatchEvent(new MouseEvent(terminal,id,System.currentTimeMillis(),id==MouseEvent.MOUSE_RELEASED?0:InputEvent.BUTTON1_DOWN_MASK,cell[0]*cellWidth+1,cell[1]*cellHeight+1,1,false,id==MouseEvent.MOUSE_DRAGGED?MouseEvent.NOBUTTON:MouseEvent.BUTTON1)));}catch(Exception e){throw new RuntimeException(e);}};
+            SwingUtilities.invokeAndWait(()->terminal.display("\u001b[?1049h"));show.accept(0);
+            mouse.accept(MouseEvent.MOUSE_PRESSED,new int[]{0,2});mouse.accept(MouseEvent.MOUSE_DRAGGED,new int[]{3,4});mouse.accept(MouseEvent.MOUSE_RELEASED,new int[]{3,4});
+            assertEquals("item-002\nitem-003\nitem",selected(terminal));
+            assertEquals("SelectionRange[from="+2*columns+", to="+(4*columns+3)+"]",highlighted.call());
+            // The application scrolls three rows: the highlight moves with the text.
+            show.accept(3);
+            assertEquals("item-002\nitem-003\nitem",selected(terminal));
+            assertEquals("SelectionRange[from=0, to="+(columns+3)+"]",highlighted.call());
+            // Out of view, the selection keeps its text; scrolling back shows it again.
+            // (The application scrolls a few rows at a time, as it does for the wheel.)
+            int first=3;while(first<rows+5){first+=4;show.accept(first);}
+            assertEquals("SelectionRange[from=-1, to=-1]",highlighted.call());
+            assertEquals("item-002\nitem-003\nitem",selected(terminal));
+            while(first>5){first-=4;show.accept(first);}show.accept(1);
+            assertEquals("SelectionRange[from="+columns+", to="+(3*columns+3)+"]",highlighted.call());
+            assertEquals("item-002\nitem-003\nitem",selected(terminal));
+            // Scrolling while the button is held extends the selection to the row under the pointer.
+            show.accept(0);
+            mouse.accept(MouseEvent.MOUSE_PRESSED,new int[]{0,1});mouse.accept(MouseEvent.MOUSE_DRAGGED,new int[]{7,5});
+            show.accept(2);show.accept(4);
+            mouse.accept(MouseEvent.MOUSE_RELEASED,new int[]{7,5});
+            StringBuilder expected=new StringBuilder();for(int n=1;n<=9;n++)expected.append(n>1?"\n":"").append(String.format("item-%03d",n));
+            assertEquals(expected.toString(),selected(terminal));
+            show.accept(0);
+            assertEquals(expected.toString(),selected(terminal),"after release the end stays on its text");
+            // Leaving the full-screen application ends a selection made in it.
+            SwingUtilities.invokeAndWait(()->{terminal.display("\u001b[?1049l");try{refresh.invoke(terminal);}catch(Exception e){throw new RuntimeException(e);}});
+            assertFalse(terminal.hasSelection());
+        }finally{SwingUtilities.invokeAndWait(view[0]::close);}
     }
     @Test void cornerHandleOnlyChangesHeightAndOneLineHasNoScrollbars()throws Exception{
         DesktopApp[] app={null};
