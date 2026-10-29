@@ -270,6 +270,77 @@ class LocalLineTest {
         assertEquals("1", sent.toString());
     }
 
+    /** Claude Code's option menu in place of the input, the cursor hidden while it is shown. */
+    private static String menu(int selected) {
+        return "\u001b[?25l\u001b[21;1H" + (selected == 1 ? "❯" : " ") + " 1. Yes\u001b[K\u001b[22;1H"
+                + (selected == 2 ? "❯" : " ") + " 2. No, tell Claude what to do\u001b[K\u001b[24;1HEsc to cancel\u001b[K";
+    }
+
+    /** The menu stays up: held output is written, and it outlasts a redraw. */
+    private void menuShown() {
+        now += LocalEcho.HOLD_NANOS;
+        write(echo.tick(now));
+        now += LocalEcho.MENU_NANOS;
+        write(echo.tick(now));
+    }
+
+    @Test
+    void choosingAnOptionWithArrowsAndEnterKeepsTheTypedLine() {
+        startClaude();
+        for (String k : "draft text".split("")) {
+            key(k);
+        }
+        now += 50 * MS;
+        remote(menu(1));
+        menuShown();
+        assertTrue(input().startsWith("❯ 1. Yes"), "the menu is shown, not the typed line: " + input());
+        key("\u001b[B");
+        now += 50 * MS;
+        remote(menu(2));
+        menuShown();
+        key("\r");
+        assertEquals("\u001b[B\r", sent.toString(), "only the menu keys reach the program; the typed line stays local");
+        now += 50 * MS;
+        remote("\u001b[22;1H\u001b[K\u001b[24;1H\u001b[K" + claudeLine(""));
+        assertEquals("❯ draft text", input());
+        assertTrue(echo.isEditingLine());
+        key("\r");
+        assertEquals("\u001b[B\rdraft text", sent.toString());
+    }
+
+    @Test
+    void aDigitChoosingAnOptionIsNotAddedToTheTypedLine() {
+        startClaude();
+        key("k");
+        key("e");
+        key("e");
+        key("p");
+        now += 50 * MS;
+        remote(menu(1));
+        menuShown();
+        key("2");
+        assertEquals("2", sent.toString());
+        now += 50 * MS;
+        remote("\u001b[22;1H\u001b[K\u001b[24;1H\u001b[K" + claudeLine(""));
+        assertEquals("❯ keep", input());
+    }
+
+    @Test
+    void aRedrawThatBrieflyHidesThePromptDoesNotTakeTheKeys() {
+        startClaude();
+        key("a");
+        now += 50 * MS;
+        // The input box moved down a row mid-redraw; the frame finishes soon after.
+        remote("\u001b[?25l\u001b[21;1Hnew transcript line\u001b[K");
+        now += LocalEcho.HOLD_NANOS;
+        write(echo.tick(now));
+        key("b");
+        now += 20 * MS;
+        remote("\u001b[22;1H❯ \u001b[K\u001b[22;3H\u001b[?25h");
+        assertEquals("", sent.toString(), "nothing typed went to the program");
+        assertEquals("❯ ab", terminal.rowText(INPUT + 1).stripTrailing());
+    }
+
     @Test
     void leavingTheProgramDropsTheLineWithoutSendingIt() {
         startClaude();

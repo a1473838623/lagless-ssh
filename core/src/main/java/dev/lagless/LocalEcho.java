@@ -241,6 +241,10 @@ public final class LocalEcho {
     private long awaitingSince;
     /** Keys typed while a submit waits for its echo, sent after the enter. */
     private final StringBuilder afterSubmit = new StringBuilder();
+    /** When the prompt row first showed something else with the cursor hidden; 0 while it does not. */
+    private long promptGoneSince;
+    /** How long that must last before it is taken for a menu: longer than a redraw, shorter than a reply. */
+    static final long MENU_NANOS = 150_000_000L;
     /** Remote output fed to {@code screen} but not written yet. */
     private final StringBuilder held = new StringBuilder();
     private long heldSince;
@@ -310,6 +314,8 @@ public final class LocalEcho {
      */
     public String onKeys(String keys, long now) {
         if (lineActive) {
+            // lineKeys draws the row again, so a line that steps aside here is taken off screen.
+            promptReplaced(now);
             return lineKeys(tokens(keys), 0, now);
         }
         if (submitting && afterSubmit.length() == 0 && lineEnabled) {
@@ -696,6 +702,40 @@ public final class LocalEcho {
         dirtyRows.add(lineRow);
     }
 
+    /**
+     * Claude Code hides the cursor while it shows a menu in place of the input (a
+     * permission question, a choice of options), so {@link #followPrompt} never runs for
+     * it. When the prompt row shows something other than the empty prompt, the line steps
+     * aside: the menu stays visible and the keys that choose an option reach the program,
+     * while the typed text waits and comes back with the prompt. A redraw in progress also
+     * hides the cursor, so the row must show something else for {@link #MENU_NANOS}, and a
+     * blank row never counts.
+     */
+    private void promptReplaced(long now) {
+        boolean replaced = lineActive && lineShown && !submitting && !awaitingClear && held.length() == 0
+                && written.inGround() && !written.cursorVisible() && lineRow < written.rows()
+                && !emptyPromptAt(written, lineRow, lineCol);
+        if (replaced) {
+            boolean blank = true;
+            for (int x = 0; x < written.cols() && blank; x++) {
+                blank = written.charAt(lineRow, x) == ' ';
+            }
+            replaced = !blank;
+        }
+        if (!replaced) {
+            promptGoneSince = 0;
+            return;
+        }
+        if (promptGoneSince == 0) {
+            promptGoneSince = now;
+        }
+        if (now - promptGoneSince >= MENU_NANOS) {
+            promptGoneSince = 0;
+            lineShown = false;
+            dirtyRows.add(lineRow);
+        }
+    }
+
     /** The local line as the user should see it: the prompt, then the text. */
     private Line lineDisplay() {
         Line line = lineOf(written, lineRow, lineCol);
@@ -743,8 +783,11 @@ public final class LocalEcho {
         if (!eligible(m)) {
             return false;
         }
-        int r = m.row();
-        int c = m.col();
+        return emptyPromptAt(m, m.row(), m.col());
+    }
+
+    /** Row {@code r} holds an input prompt ending at column {@code c}, with at most a dim placeholder after it. */
+    private static boolean emptyPromptAt(ScreenModel m, int r, int c) {
         if (c < 2) {
             return false;
         }
@@ -921,6 +964,7 @@ public final class LocalEcho {
         if (held.length() > 0) {
             return now - heldSince >= HOLD_NANOS ? flush(now) : "";
         }
+        promptReplaced(now);
         checkSubmit(now);
         if (pending.isEmpty() && probe.isEmpty() && dirtyRows.isEmpty()) {
             return "";
@@ -1011,6 +1055,8 @@ public final class LocalEcho {
         }
         if (written.inGround() && written.cursorVisible()) {
             followPrompt();
+        } else {
+            promptReplaced(now);
         }
         if (lineActive) {
             dirtyRows.add(lineRow);
