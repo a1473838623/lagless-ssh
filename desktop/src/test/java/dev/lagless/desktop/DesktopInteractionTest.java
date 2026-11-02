@@ -153,6 +153,37 @@ class DesktopInteractionTest {
             assertEquals("row-005\nrow-00",copied.toString());
         }finally{SwingUtilities.invokeAndWait(view[0]::close);history.close();}
     }
+    @Test void scrollingUpDoesNotShowTheScreenASecondTimeAfterThePrompt()throws Exception{
+        TerminalHistory history=new TerminalHistory(dir,"tail");SwingTerminal[] view={null};
+        StringBuilder output=new StringBuilder("root# cat file\r\n");for(int n=1;n<=60;n++)output.append(String.format("line-%03d\r\n",n));output.append("root# ");
+        SwingUtilities.invokeAndWait(()->{view[0]=new SwingTerminal();view[0].setSize(900,400);});
+        try{
+            SwingUtilities.invokeAndWait(()->{});int[] grid={0,0};SwingUtilities.invokeAndWait(()->{int[] size=view[0].gridSize();grid[0]=size[0];grid[1]=size[1];view[0].setHistory(history);view[0].display(output.toString());});
+            SwingTerminal terminal=view[0];terminal.flushHistory();
+            assertTrue(history.count()>history.stableCount(),"the log's copy of the current screen exists");
+            assertTrue(history.plainText(0,1_000_000).contains("line-060\nroot#"),"the log has the screen once");
+            long live=terminal.viewportStart();assertEquals(history.stableCount(),live);
+            int top=60+2-grid[1];// The number on the first row of the live screen; the prompt is the last row.
+            for(int up=1;up<=grid[1]+3;up++){
+                long target=live-up;int first=top-up;
+                SwingUtilities.invokeAndWait(()->terminal.showHistory(target));
+                await(()->terminal.displayedText().startsWith(String.format("line-%03d\n",first)));
+                String[] rows=terminal.displayedText().split("\n");
+                for(int row=0;row<rows.length&&first+row<=60;row++)assertEquals(String.format("line-%03d",first+row),rows[row],"rows continue in order, "+up+" rows up");
+            }
+            SwingUtilities.invokeAndWait(terminal::followLatest);assertTrue(terminal.followingLive());
+            // A live selection stays on its text when the tail changes or a row scrolls away.
+            SwingUtilities.invokeAndWait(()->{
+                var metrics=terminal.getFontMetrics(terminal.getFont());int cellWidth=metrics.charWidth('M');
+                int cellHeight=metrics.getHeight()+Math.max(2,metrics.getMaxAscent()-metrics.getAscent()+2);
+                terminal.dispatchEvent(new MouseEvent(terminal,MouseEvent.MOUSE_PRESSED,System.currentTimeMillis(),InputEvent.BUTTON1_DOWN_MASK,1,cellHeight+1,1,false,MouseEvent.BUTTON1));
+                terminal.dispatchEvent(new MouseEvent(terminal,MouseEvent.MOUSE_DRAGGED,System.currentTimeMillis(),InputEvent.BUTTON1_DOWN_MASK,cellWidth*7+1,cellHeight+1,0,false,MouseEvent.NOBUTTON));
+            });
+            String chosen=String.format("line-%03d",top+1);assertEquals(chosen,selected(terminal));
+            terminal.flushHistory();assertEquals(chosen,selected(terminal));
+            SwingUtilities.invokeAndWait(()->terminal.display("\r\nmore\r\nroot# "));terminal.flushHistory();assertEquals(chosen,selected(terminal));
+        }finally{SwingUtilities.invokeAndWait(view[0]::close);history.close();}
+    }
     static String selected(SwingTerminal terminal){var selected=terminal.getSelectedText(null);StringBuilder copied=new StringBuilder();for(char c=selected.first();c!=java.text.CharacterIterator.DONE;c=selected.next())copied.append(c);return copied.toString();}
     /** A full-screen application's frame showing items from {@code first}, drawn as one synchronized update. */
     static String itemFrame(int rows,int first){StringBuilder frame=new StringBuilder("\u001b[?2026h\u001b[H\u001b[2J");for(int r=0;r<rows;r++){if(r>0)frame.append("\r\n");frame.append(String.format("item-%03d",first+r));}return frame.append("\u001b[?2026l").toString();}

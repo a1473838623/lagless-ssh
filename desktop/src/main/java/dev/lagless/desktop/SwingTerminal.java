@@ -96,7 +96,14 @@ public final class SwingTerminal extends JComponent implements AutoCloseable,Inp
     void setPageKeysForRemoteWheel(boolean value){pageKeysForRemoteWheel=value;remoteWheelQueue.cancel();}
     void observeRemoteModes(String text){wheelProtocol.feed(text);if(!localEditing&&REDRAW_PATTERN.matcher(text).find())interactiveRedraw=true;}
     boolean followingLive(){return followLive;}
-    long viewportStart(){return followLive&&history!=null?history.count():viewportStart;}
+    long viewportStart(){return followLive&&history!=null?liveStart():viewportStart;}
+    /**
+     * The document row where the live screen starts. In ordinary output the history's pending
+     * tail is a copy of that screen, kept so the log file has it, so it is not a separate part
+     * of the document: counting it showed the screen twice when scrolling up. While a program
+     * redraws the screen, the tail holds what was there before and is real history.
+     */
+    private long liveStart(){if(history==null)return 0;synchronized(screen){return realtimeHistory(screen)?history.count():history.stableCount();}}
     void setHistory(TerminalHistory history){this.history=history;synchronized(screen){screen.setHistoryListener(new ScreenModel.HistoryListener(){
         public void scrolled(int[] characters,String[] pens){scrolled(characters,pens,false);}
         public void scrolled(int[] characters,String[] pens,boolean wrapped){beginRedraw(screen);if(!realtimeHistory(screen))appendHistory(TerminalHistory.Row.cells(characters,pens,wrapped));}
@@ -174,11 +181,11 @@ public final class SwingTerminal extends JComponent implements AutoCloseable,Inp
     void scrollHistory(long lines){if(history==null)return;showHistory(viewportStart()+lines);}
     void followLatest(){wheelPositionValid=false;scrollOffset=0;followLive=true;invalidateFrame();updateHistoryBar();}
     void showHistory(long start){remoteWheelQueue.cancel();wheelPositionValid=false;scrollOffset=0;moveHistory(start);}
-    private void moveHistory(long start){if(history==null)return;viewportStart=Math.max(0,Math.min(start,history.count()));followLive=viewportStart>=history.count();invalidateFrame();loadHistoryPage();updateHistoryBar();}
+    private void moveHistory(long start){if(history==null)return;long live=liveStart();viewportStart=Math.max(0,Math.min(start,live));followLive=viewportStart>=live;invalidateFrame();loadHistoryPage();updateHistoryBar();}
     private void wheelScroll(double rows){
         if(history==null||rows==0)return;
         if(!wheelPositionValid)wheelPosition=viewportStart()+scrollOffset/(double)Math.max(1,cellHeight);
-        wheelPosition=Math.max(0,Math.min(history.count(),wheelPosition+rows));wheelPositionValid=true;
+        wheelPosition=Math.max(0,Math.min(liveStart(),wheelPosition+rows));wheelPositionValid=true;
         long first=(long)Math.floor(wheelPosition);
         moveHistory(first);
         scrollOffset=followLive?0:(int)Math.round((wheelPosition-first)*cellHeight);
@@ -186,7 +193,7 @@ public final class SwingTerminal extends JComponent implements AutoCloseable,Inp
     }
     private void loadHistoryPage(){
         if(followLive||history==null||closed)return;
-        long start=viewportStart,count=history.count();int rows;synchronized(screen){rows=screen.rows()+1;}
+        long start=viewportStart,count=liveStart();int rows;synchronized(screen){rows=screen.rows()+1;}
         int needed=(int)Math.min(rows,Math.max(0,count-start));
         if(!historyPageStale&&pageStart<=start&&pageStart>=0&&pageStart+historyPage.size()>=start+needed){
             if(displayStart!=start){displayStart=start;invalidateFrame();}return;
@@ -219,7 +226,9 @@ public final class SwingTerminal extends JComponent implements AutoCloseable,Inp
         if(history==null)return;
         if(history.omitted()>0&&lastOmitted==0){lastOmitted=history.omitted();notice.accept(I18n.t("终端历史写入缓冲过载，部分展示行省略；远端输出仍在全量输入输出历史中。","Terminal history buffer overflowed and some display rows were skipped; remote output is still in the full input/output history."));}
 long revision=history.tailRevision();if(revision!=observedTailRevision){observedTailRevision=revision;if(pageStart>=0&&pageStart+historyPage.size()>Math.max(0,history.stableCount()-512))historyPageStale=true;}
-        long count=history.count();int extent; synchronized(screen){extent=Math.max(1,screen.rows());}
+        long count=liveStart();int extent; synchronized(screen){extent=Math.max(1,screen.rows());}
+        // The start of the live screen can move up when a redrawing program ends.
+        if(!followLive&&viewportStart>count){moveHistory(count);return;}
         long max=count+extent;int maximum=(int)Math.min(Integer.MAX_VALUE,max);
         int value=(int)(max<=Integer.MAX_VALUE?viewportStart():Math.round(viewportStart()*(double)(maximum-extent)/Math.max(1,count)));
         adjustingBar=true;try{historyBar.setValues(value,extent,0,maximum);historyBar.setUnitIncrement(3);historyBar.setBlockIncrement(Math.max(1,extent-2));}finally{adjustingBar=false;}
@@ -243,7 +252,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
         // Breathing room around the text, painted in the terminal's own color.
         surface.setBorder(BorderFactory.createMatteBorder(8,14,4,0,DEFAULT_BACKGROUND));
         surface.add(this,BorderLayout.CENTER);surface.add(historyBar,BorderLayout.EAST);historyBar.setToolTipText(I18n.t("本地长期历史 · Shift+滚轮 / Shift+PageUp · Ctrl+End 回到当前应用画面","Local long-term history · Shift+wheel / Shift+PageUp · Ctrl+End returns to the live screen"));
-        historyBar.addAdjustmentListener(e->{if(!adjustingBar&&history!=null){long count=history.count();int range=historyBar.getMaximum()-historyBar.getVisibleAmount();showHistory(range<=0?count:Math.round(e.getValue()*(double)count/range));}});
+        historyBar.addAdjustmentListener(e->{if(!adjustingBar&&history!=null){long count=liveStart();int range=historyBar.getMaximum()-historyBar.getVisibleAmount();showHistory(range<=0?count:Math.round(e.getValue()*(double)count/range));}});
         addMouseWheelListener(e->{
             RemoteWheelProtocol.Mode mode=wheelProtocol.mode();
             boolean interactive=alternateScreen||!localEditing&&(interactiveRedraw||mode.supported());
@@ -527,7 +536,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
     private Point documentCell(MouseEvent e){
         Point cell=cell(e);int rows,columns;synchronized(screen){rows=screen.rows();columns=screen.cols();}
         int row=cell.y;if(!followLive)row=Math.max(0,(e.getY()+scrollOffset)/Math.max(1,cellHeight));
-        long first=followLive?(history==null?0:history.count()):displayStart;
+        long first=followLive?liveStart():displayStart;
         return new Point(Math.min(columns-1,cell.x),(int)Math.min(Integer.MAX_VALUE,first+Math.min(rows-1,row)));
     }
     private ScrollTracker.Track liveTrack(){PaintFrame shown=cachedFrame;return followLive&&shown!=null?shown.track():null;}
@@ -568,7 +577,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
         Point start=compare(selectionStart,selectionEnd)<=0?selectionStart:selectionEnd;
         Point end=start==selectionStart?selectionEnd:selectionStart;
         if(trackedSelection)return trackedText(start,end);
-        long count=history==null?0:history.count();int columns;synchronized(screen){columns=screen.cols();}
+        long count=liveStart();int columns;synchronized(screen){columns=screen.cols();}
         StringBuilder text=new StringBuilder();
         for(int row=start.y;row<=end.y;row++){
             int firstColumn=row==start.y?start.x:0,lastColumn=row==end.y?end.x:columns-1;
@@ -633,7 +642,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
         if(remoteHistoryNavigation&&redrawSince==0)redrawSince=lastOutputAt;
         if(screen.synchronizedOutput()&&synchronizedSince==0)synchronizedSince=lastOutputAt;
         if(!screen.synchronizedOutput()&&(localEditing||redrawSince==0))publishLiveFrame();
-        if(!followLive&&(history==null||historyPage.isEmpty()||displayStart+screen.rows()>history.count()))invalidateFrame();
+        if(!followLive&&(history==null||historyPage.isEmpty()||displayStart+screen.rows()>liveStart()))invalidateFrame();
     }
     /** {@code track} places a full-screen application's live frame in the scroll tracker's document; null otherwise. */
     static record PaintFrame(int columns,int rows,int[] characters,String[] pens,int cursorRow,int cursorColumn,boolean cursorVisible,long firstLine,ScrollTracker.Track track){}
@@ -646,7 +655,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
         ScrollTracker.Track track=null;
         if(!realtimeHistory(screen)){if(tracker.active())tracker.reset();}
         else track=finished?tracker.frame(columns,screen.rows(),chars):tracker.track();
-        return new PaintFrame(columns,rows,chars,pens,screen.row(),screen.col(),screen.cursorVisible(),history==null?0:history.count(),track);
+        return new PaintFrame(columns,rows,chars,pens,screen.row(),screen.col(),screen.cursorVisible(),liveStart(),track);
     }
     private void refreshCachedFrame(){
         synchronized(screen){
@@ -659,7 +668,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
         }
     }
     private PaintFrame paintFrame(){
-        long count=history==null?0:history.count();
+        long count=liveStart();
         synchronized(screen){
             int columns=screen.cols(),rows=screen.rows()+1;int[] characters=new int[columns*rows];String[] pens=new String[characters.length];
             for(int r=0;r<rows;r++)for(int c=0;c<columns;c++){int at=r*columns+c;characters[at]=visibleChar(r,c,count);pens[at]=visiblePen(r,c,count);}
@@ -687,7 +696,7 @@ long revision=history.tailRevision();if(revision!=observedTailRevision){observed
             if(!followLive){DesktopFonts.textHints(g);g.setColor(new Color(0x282d3b));g.fillRect(Math.max(0,getWidth()-250),4,246,24);g.setColor(new Color(0xd8dfec));g.setFont(DesktopFonts.ui().deriveFont(11f));g.drawString(I18n.t("历史视图 · Ctrl+End 回到最新","History view · Ctrl+End for latest"),Math.max(4,getWidth()-240),21);}
         }finally{g.dispose();}
     }
-    String displayedText(){long count=history==null?0:history.count();synchronized(screen){StringBuilder text=new StringBuilder();for(int r=0;r<screen.rows();r++){StringBuilder row=new StringBuilder();for(int c=0;c<screen.cols();c++){int cp=visibleChar(r,c,count);if(cp>=0)row.appendCodePoint(cp);}text.append(row.toString().stripTrailing()).append('\n');}return text.toString();}}
+    String displayedText(){long count=liveStart();synchronized(screen){StringBuilder text=new StringBuilder();for(int r=0;r<screen.rows();r++){StringBuilder row=new StringBuilder();for(int c=0;c<screen.cols();c++){int cp=visibleChar(r,c,count);if(cp>=0)row.appendCodePoint(cp);}text.append(row.toString().stripTrailing()).append('\n');}return text.toString();}}
     private static final Color DEFAULT_FOREGROUND=new Color(0xe0e6f1),DEFAULT_BACKGROUND=new Color(0x11151d);
     private static final int[] PALETTE = {0x111827,0xf87171,0x6ee7b7,0xfbbf24,0x60a5fa,0xc084fc,0x67e8f9,0xe0e6f1,0x64748b,0xfca5a5,0xa7f3d0,0xfde68a,0x93c5fd,0xe9d5ff,0xa5f3fc,0xffffff};
     static Color[] colors(String pen) {
