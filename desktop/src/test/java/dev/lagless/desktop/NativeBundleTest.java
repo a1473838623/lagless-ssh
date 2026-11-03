@@ -21,6 +21,82 @@ class NativeBundleTest {
         NativeUpdater.apply(old,stage);assertEquals("2",NativeBundle.validate(old,true).version());assertEquals("2",Files.readString(old.resolve("lib/config")));assertEquals("keep",Files.readString(old.resolve("personal.txt")));
         Path previous=NativeUpdater.prepare(old,old.resolve(".updates/previous.zip"));NativeUpdater.apply(old,previous);assertEquals("1",NativeBundle.validate(old,true).version());
     }
+    /** A bundle whose program acts as the installer: it reports ready, then waits. */
+    private Path scriptBundle(String name,String version)throws Exception{
+        Path root=dir.resolve(name);Files.createDirectories(root);
+        Path program=root.resolve("Lagless.exe");
+        Files.writeString(program,"#!/bin/sh\nname=$(basename \"$2\" .json)\nprintf '{}' > \"$(dirname \"$2\")/ready-${name#request-}.json\"\nexec sleep 300\n");program.toFile().setExecutable(true);
+        Files.writeString(root.resolve("bundle.json"),Json.stringify(Map.of("format",1,"edition","desktop-native","version",version,"platform",NativeBundle.platform(),"executable","Lagless.exe",
+                "files",List.of(Map.of("path","Lagless.exe","size",Files.size(program),"sha256",NativeBundle.sha256(program),"executable",true)))));
+        return root;
+    }
+    private static void killInstaller(Path home)throws Exception{
+        Object pending=Json.parse(Files.readString(home.resolve(".updates/pending.json")));
+        ProcessHandle process=ProcessHandle.of(Json.number(pending,-1,"helper")).orElseThrow();
+        process.destroyForcibly();process.onExit().get();
+    }
+    @Test void aDownloadedUpdateOutlivesItsInstaller()throws Exception{
+        org.junit.jupiter.api.Assumptions.assumeFalse(NativeBundle.platform().startsWith("windows"),"the fixture installer is a shell script");
+        Path home=scriptBundle("home","1"),next=scriptBundle("next","2"),zip=dir.resolve("next.zip");NativeBundle.pack(next,zip);
+        try{
+            NativeUpdater.stage(home,zip,true);
+            assertTrue(NativeUpdater.hasPending(home));
+            assertEquals("2",NativeUpdater.waiting(home).to());
+            assertFalse(NativeUpdater.resume(home,false),"its installer still runs");
+            // Rebooted or killed: nothing reported. A launch starts a new installer for the same files.
+            Path staged=NativeUpdater.waiting(home).staged();
+            killInstaller(home);assertFalse(NativeUpdater.hasPending(home));
+            assertTrue(NativeUpdater.resume(home,true));assertTrue(NativeUpdater.hasPending(home));
+            assertEquals(staged,NativeUpdater.waiting(home).staged(),"no second copy of the download");
+            try(var installers=Files.list(home.resolve(".updates"))){assertEquals(1,installers.filter(p->p.getFileName().toString().startsWith("installer-")).count(),"the old installer's copy is removed");}
+            // Launches stop retrying on their own; the Restart button still works.
+            killInstaller(home);assertTrue(NativeUpdater.resume(home,true));
+            killInstaller(home);assertFalse(NativeUpdater.resume(home,true),"after "+NativeUpdater.AUTO_RESUMES+" tries");
+            assertTrue(NativeUpdater.resume(home,false));assertTrue(NativeUpdater.hasPending(home));
+            // A failed install is not retried by a launch, only on request.
+            killInstaller(home);Files.writeString(home.resolve(".updates/result.json"),Json.stringify(Map.of("ok",false,"error","files in use","nonce","x")));
+            assertFalse(NativeUpdater.resume(home,true));assertTrue(NativeUpdater.waiting(home).reported());
+            assertTrue(NativeUpdater.resume(home,false));assertFalse(NativeUpdater.waiting(home).reported(),"a new attempt clears the old result");
+            // Damaged files are not installed; the caller says to download again.
+            killInstaller(home);Files.writeString(staged.resolve("Lagless.exe"),"damaged");
+            assertFalse(NativeUpdater.resume(home,false));assertNull(NativeUpdater.waiting(home));
+        }finally{
+            Path pending=home.resolve(".updates/pending.json");
+            if(Files.isRegularFile(pending))ProcessHandle.of(Json.number(Json.parse(Files.readString(pending)),-1,"helper")).ifPresent(ProcessHandle::destroyForcibly);
+        }
+    }
+    @Test void aWaitingUpdateIsDroppedOnceTheVersionItReplacesIsGone()throws Exception{
+        org.junit.jupiter.api.Assumptions.assumeFalse(NativeBundle.platform().startsWith("windows"),"the fixture installer is a shell script");
+        Path home=scriptBundle("home","1"),next=scriptBundle("next","3"),zip=dir.resolve("next.zip");NativeBundle.pack(next,zip);
+        try{
+            NativeUpdater.stage(home,zip,true);killInstaller(home);assertNotNull(NativeUpdater.waiting(home));
+            // The user extracted a newer ZIP over the installation by hand.
+            Path newer=scriptBundle("newer","2");Files.copy(newer.resolve("bundle.json"),home.resolve("bundle.json"),StandardCopyOption.REPLACE_EXISTING);
+            assertNull(NativeUpdater.waiting(home));assertFalse(NativeUpdater.resume(home,true));
+        }finally{
+            Path pending=home.resolve(".updates/pending.json");
+            if(Files.isRegularFile(pending))ProcessHandle.of(Json.number(Json.parse(Files.readString(pending)),-1,"helper")).ifPresent(ProcessHandle::destroyForcibly);
+        }
+    }
+    @Test void theInstallerWaitsAsLongAsTheProgramRunsAndOnlyGivesUpOnHeldFiles()throws Exception{
+        long hour=java.util.concurrent.TimeUnit.HOURS.toNanos(1);
+        class Clock implements NativeUpdater.ExitWait{
+            long now,programUntil,heldUntil;
+            Clock(long programUntil,long heldUntil){this.programUntil=programUntil;this.heldUntil=heldUntil;}
+            public boolean programRunning(){return now<programUntil;}
+            public boolean filesHeld(){return now<heldUntil;}
+            public long now(){return now;}
+            public void pause(){now+=java.util.concurrent.TimeUnit.SECONDS.toNanos(30);}
+        }
+        Clock days=new Clock(hour*24*5,0);
+        assertTrue(NativeUpdater.awaitExit(days,NativeUpdater.FILE_RELEASE_NANOS),"open for days: no time limit");
+        assertTrue(days.now>=hour*24*5);
+        Clock briefly=new Clock(hour*24,hour*24+java.util.concurrent.TimeUnit.MINUTES.toNanos(2));
+        assertTrue(NativeUpdater.awaitExit(briefly,NativeUpdater.FILE_RELEASE_NANOS),"files freed soon after the exit");
+        Clock stuck=new Clock(hour*24,Long.MAX_VALUE);
+        assertFalse(NativeUpdater.awaitExit(stuck,NativeUpdater.FILE_RELEASE_NANOS),"files held long after the exit");
+        assertTrue(stuck.now-hour*24<=NativeUpdater.FILE_RELEASE_NANOS+java.util.concurrent.TimeUnit.SECONDS.toNanos(60));
+    }
     @Test void rejectsTamperingBeforeChangingInstalledFiles()throws Exception{
         Path old=bundle("old","1"),next=bundle("next","2");Files.writeString(next.resolve("Lagless.exe"),"corrupted");assertThrows(Exception.class,()->NativeUpdater.apply(old,next));assertEquals("1",NativeBundle.validate(old,true).version());
     }

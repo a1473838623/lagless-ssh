@@ -57,7 +57,7 @@ final class UpdateDialog {
     boolean isDisplayable(){return !disposed;}
     void show(){dialog.setVisible(true);dialog.toFront();}
     void dispose(){dialog.dispose();timer.stop();disposed=true;}
-    private void refresh(){check.setEnabled(!busy);download.setEnabled(!busy);importBundle.setEnabled(!busy);rollback.setEnabled(!busy);restart.setEnabled(!busy&&DesktopRuntime.nativeImage()&&NativeUpdater.hasPending());}
+    private void refresh(){check.setEnabled(!busy);download.setEnabled(!busy);importBundle.setEnabled(!busy);rollback.setEnabled(!busy);restart.setEnabled(!busy&&DesktopRuntime.nativeImage()&&NativeUpdater.canRestart());}
     private void runUpdate(boolean onlyCheck){start(onlyCheck?I18n.t("正在检查更新…","Checking for updates…"):I18n.t("正在检查并准备下载更新…","Checking and preparing the download…"),()->{
         if(DesktopRuntime.nativeImage())return new Result(NativeUpdater.update(onlyCheck,latest::set),true);
         LaglessConfig config=LaglessConfig.load(LaglessConfig.defaultPath());StringWriter text=new StringWriter();

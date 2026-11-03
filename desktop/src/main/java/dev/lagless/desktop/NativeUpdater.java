@@ -12,6 +12,13 @@ import java.util.concurrent.TimeUnit;
 public final class NativeUpdater {
     private NativeUpdater(){ }
     private static boolean alive(long pid){return pid>0&&ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false);}
+    /** A helper recorded in pending.json still runs. The start time tells it from a later process given the same PID, as after a reboot. */
+    private static boolean helperAlive(Object pending){
+        long pid=Json.number(pending,-1,"helper");if(!alive(pid))return false;
+        String started=Json.string(pending,"started");if(started==null)return true;
+        var now=ProcessHandle.of(pid).flatMap(process->process.info().startInstant());
+        return now.isEmpty()||now.get().toString().equals(started);
+    }
     private static Path cache(Path home){
         String key=home.toAbsolutePath().normalize().toString();if(NativeBundle.platform().startsWith("windows"))key=key.toLowerCase(Locale.ROOT);
         return Path.of(System.getProperty("user.home"),".lagless","desktop","updates",UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString());
@@ -40,6 +47,9 @@ public final class NativeUpdater {
         Updater.Asset asset=release.assets().get(name);
         if(asset==null)throw new IOException(I18n.t("此发布缺少当前平台原生包：","This release has no native package for this platform: ")+name);
         if(check)return I18n.t("当前：","Current: ")+DesktopRuntime.version()+I18n.t("\n可用：","\nAvailable: ")+release.tag()+"\n"+name;
+        // Downloaded earlier and its installer is gone: nothing needs downloading again.
+        Waiting waiting=waiting(DesktopRuntime.home());
+        if(waiting!=null&&Updater.compareVersions(waiting.to(),release.tag())==0&&resume(DesktopRuntime.home(),false))return ready();
         Path updates=control(DesktopRuntime.home(),true);
         Path downloads=updates.resolve("downloads");Files.createDirectories(downloads);
         String key=UUID.nameUUIDFromBytes((release.tag()+"\n"+name+"\n"+asset.apiUrl()+"\n"+asset.size()).getBytes(StandardCharsets.UTF_8)).toString();
@@ -63,8 +73,9 @@ public final class NativeUpdater {
             arm(DesktopRuntime.home(),staged);
             }
         }
-        return I18n.t("更新包已校验，安装助手已就绪。点击「重启并应用更新」替换当前安装目录；也可退出全部窗口后等待安装完成。\n安装目录：","Update package verified and the installer is ready. Click Restart and apply update to replace the current install folder, or quit all windows and wait for the install to finish.\nInstall folder: ")+DesktopRuntime.home();
+        return ready();
     }
+    private static String ready(){return I18n.t("更新包已校验，安装助手已就绪。点击「重启并应用更新」替换当前安装目录；也可退出全部窗口后等待安装完成。\n安装目录：","Update package verified and the installer is ready. Click Restart and apply update to replace the current install folder, or quit all windows and wait for the install to finish.\nInstall folder: ")+DesktopRuntime.home();}
     /** Also used by authenticated backup restore. No application file is touched yet. */
     public static Path prepare(Path home,Path archive)throws IOException {
         Path updates=control(home,true);
@@ -96,26 +107,28 @@ public final class NativeUpdater {
         Path home=DesktopRuntime.home(),archive=home.resolve(".updates/previous.zip");
         if(!Files.isRegularFile(archive))throw new IOException(I18n.t("没有上一版原生包备份","No backup of the previous native package"));stage(home,archive,true);
     }
-    public static void arm(Path home,Path staged)throws Exception {
+    public static void arm(Path home,Path staged)throws Exception {arm(home,staged,0);}
+    private static void arm(Path home,Path staged,int autoResumes)throws Exception {
         home=home.toAbsolutePath().normalize();staged=staged.toAbsolutePath().normalize();Path updates=staged.getParent();
         if(!updates.equals(home.resolve(".updates"))&&!updates.equals(cache(home)))throw new IOException(I18n.t("更新暂存目录无效","Invalid update staging folder"));
         try(var channel=java.nio.channels.FileChannel.open(updates.resolve("staging.lock"),StandardOpenOption.CREATE,StandardOpenOption.WRITE)) {
             java.nio.channels.FileLock lock;
             try{lock=channel.tryLock();}catch(java.nio.channels.OverlappingFileLockException e){throw new IOException(I18n.t("另一个更新操作正在准备，请稍后重试","Another update is being prepared; try again later"),e);}
             if(lock==null)throw new IOException(I18n.t("另一个进程正在准备更新，请稍后重试","Another process is preparing an update; try again later"));
-            try(lock){armLocked(home,staged,updates);}
+            try(lock){armLocked(home,staged,updates,autoResumes);}
         }
     }
-    private static void armLocked(Path home,Path staged,Path updates)throws Exception {
+    private static void armLocked(Path home,Path staged,Path updates,int autoResumes)throws Exception {
         NativeBundle.Manifest next=NativeBundle.validate(staged,true),current=NativeBundle.validate(home,true);
         String nonce=UUID.randomUUID().toString();Path request=updates.resolve("request-"+nonce+".json");
         // One pending update per installation, including across separate desktop windows.
         Path lock=updates.resolve("pending.json");
         if(Files.exists(lock)){
-            Object previous=Json.parse(Files.readString(lock));long pid=Json.number(previous,-1,"helper");
-            if(alive(pid))throw new IOException(I18n.t("已经有等待退出的更新，请先完成该更新","An update is already waiting for exit; finish it first"));
+            Object previous=Json.parse(Files.readString(lock));
+            if(helperAlive(previous))throw new IOException(I18n.t("已经有等待退出的更新，请先完成该更新","An update is already waiting for exit; finish it first"));
             Files.delete(lock);
         }
+        String replaced=waitingNonce(updates);
         Files.deleteIfExists(updates.resolve("result.json"));
         Files.writeString(updates.resolve("helper.stderr.log"),"");
         ProfileStore.atomicWrite(request,Json.stringify(Map.of("home",home.toString(),"staged",staged.toString(),"pid",ProcessHandle.current().pid(),"nonce",nonce)));
@@ -131,14 +144,79 @@ public final class NativeUpdater {
         helper.toFile().setExecutable(true,true);
         boolean elevate=NativeBundle.platform().startsWith("windows")&&!writable(home);
         long pid=launchHelper(helper,request,updates,elevate);
-        ProfileStore.atomicWrite(lock,Json.stringify(Map.of("helper",pid,"request",request.toString(),"nonce",nonce)));
+        Map<String,Object> pending=new HashMap<>(Map.of("helper",pid,"request",request.toString(),"nonce",nonce));
+        ProcessHandle.of(pid).flatMap(process->process.info().startInstant()).ifPresent(started->pending.put("started",started.toString()));
+        ProfileStore.atomicWrite(lock,Json.stringify(pending));
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(20);
         while(!Files.isRegularFile(updates.resolve("ready-"+nonce+".json"))){
             if(!alive(pid)){Files.deleteIfExists(lock);throw new IOException(I18n.t("更新助手启动失败，未替换程序。","Installer failed to start; the program was not replaced.")+failureDetails(updates));}
             if(System.nanoTime()>deadline)throw new IOException(I18n.t("更新助手未确认就绪，不能确认更新成功。日志：","Installer did not confirm it was ready, so the update cannot be confirmed. Log: ")+updates);
             Thread.sleep(100);
         }
+        // Only now: if this installer did not start, the update is still there to try again.
+        writeWaiting(updates,staged,current.version(),next.version(),autoResumes,nonce);
+        removeInstaller(updates,replaced);
     }
+    /**
+     * A verified update waiting to be installed. The installer process can go away before the
+     * program exits (a reboot, a log-off, a failed install), and the download must not be lost
+     * with it: {@link #resume} starts a new installer for the same files.
+     * {@code reported}: the installer ended with a result, so a retry needs the user's request.
+     */
+    record Waiting(Path staged,String from,String to,int autoResumes,boolean reported){}
+    private static final String WAITING="waiting.json";
+    /** Unattended retries per update, so a launch never keeps asking for permission or failing. */
+    static final int AUTO_RESUMES=2;
+    private static void writeWaiting(Path updates,Path staged,String from,String to,int autoResumes,String nonce)throws IOException{
+        ProfileStore.atomicWrite(updates.resolve(WAITING),Json.stringify(Map.of("staged",staged.toString(),"from",from,"to",to,"autoResumes",autoResumes,"nonce",nonce)));
+    }
+    private static String waitingNonce(Path updates){
+        try{Path file=updates.resolve(WAITING);return Files.isRegularFile(file)?Json.string(Json.parse(Files.readString(file)),"nonce"):null;}
+        catch(Exception error){return null;}
+    }
+    /** A new installer replaces the last one; its private copy of the program is no longer needed. */
+    private static void removeInstaller(Path updates,String nonce){
+        if(nonce==null||!nonce.matches("[0-9a-f-]{36}"))return;
+        try{
+            Files.deleteIfExists(updates.resolve("request-"+nonce+".json"));Files.deleteIfExists(updates.resolve("ready-"+nonce+".json"));
+            Path helper=updates.resolve("installer-"+nonce);if(!Files.isDirectory(helper))return;
+            try(var files=Files.walk(helper)){for(Path path:files.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(path);}
+        }catch(IOException ignored){}
+    }
+    static Waiting waiting(Path home){
+        home=home.toAbsolutePath().normalize();
+        for(Path updates:List.of(cache(home),home.resolve(".updates")))try{
+            Path file=updates.resolve(WAITING);if(!Files.isRegularFile(file))continue;
+            Object json=Json.parse(Files.readString(file));Path staged=Path.of(Objects.requireNonNull(Json.string(json,"staged"))).toAbsolutePath().normalize();
+            if(!updates.equals(staged.getParent())||!staged.getFileName().toString().startsWith("candidate-")||!Files.isRegularFile(staged.resolve(NativeBundle.MANIFEST)))continue;
+            // Installed some other way meanwhile, or already done.
+            String from=Json.string(json,"from");if(!NativeBundle.manifest(home,true).version().equals(from))continue;
+            boolean reported=false;Path result=updates.resolve("result.json");
+            if(Files.isRegularFile(result)){if(Boolean.TRUE.equals(Json.get(Json.parse(Files.readString(result)),"ok")))continue;reported=true;}
+            return new Waiting(staged,from,Json.string(json,"to"),(int)Json.number(json,0,"autoResumes"),reported);
+        }catch(Exception ignored){}
+        return null;
+    }
+    /**
+     * Starts a new installer for the waiting update, without downloading it again.
+     * {@code unattended}: on a plain launch, which must not retry a failed install or keep
+     * asking for permission. False when there is nothing to resume or it no longer verifies.
+     */
+    static boolean resume(Path home,boolean unattended)throws Exception{
+        Waiting waiting=waiting(home);
+        if(waiting==null||hasPending(home))return false;
+        if(unattended&&(waiting.reported()||waiting.autoResumes()>=AUTO_RESUMES))return false;
+        Path updates=waiting.staged().getParent();
+        try{NativeBundle.validate(waiting.staged(),true);}
+        catch(IOException damaged){removeInstaller(updates,waitingNonce(updates));Files.deleteIfExists(updates.resolve(WAITING));return false;}
+        int autoResumes=unattended?waiting.autoResumes()+1:waiting.autoResumes();
+        // Counted before starting: a refused permission prompt ends without reaching the installer.
+        writeWaiting(updates,waiting.staged(),waiting.from(),waiting.to(),autoResumes,waitingNonce(updates));
+        arm(home,waiting.staged(),autoResumes);
+        return true;
+    }
+    /** Whether Restart and apply update has something to do. */
+    public static boolean canRestart(){return hasPending()||waiting(DesktopRuntime.home())!=null;}
     private static String literal(String value){return "'"+value.replace("'","''")+"'";}
     private static long launchHelper(Path helper,Path request,Path updates,boolean elevate)throws Exception{
         if(!elevate)return new ProcessBuilder(helper.toString(),"--apply-update",request.toString()).directory(helper.getParent().toFile())
@@ -176,20 +254,41 @@ public final class NativeUpdater {
             NativeBundle.validate(r.staged(),true);
             phase(r,I18n.t("等待当前程序和占用文件的进程退出","Waiting for this program and processes holding its files to exit"));
             ProfileStore.atomicWrite(r.control().resolve("ready-"+r.nonce()+".json"),Json.stringify(Map.of("nonce",r.nonce(),"helper",ProcessHandle.current().pid())));
-            long deadline=System.nanoTime()+TimeUnit.MINUTES.toNanos(10);
-            while(alive(r.parent())||installationRunning(r.home())){
-                if(System.nanoTime()>deadline)throw new IOException(I18n.t("等待旧程序退出或文件释放超时，未替换程序。请关闭该安装目录的全部实例后重试。","Timed out waiting for the old program to exit or release files; the program was not replaced. Close every instance from this install folder and try again.")+fileUserDetails(r.home()));Thread.sleep(500);
-            }
+            boolean released=awaitExit(new ExitWait(){
+                public boolean programRunning(){return alive(r.parent())||otherInstance(r.home());}
+                public boolean filesHeld()throws IOException{return installationFileUsers(r.home()).length>0;}
+                public long now(){return System.nanoTime();}
+                public void pause()throws InterruptedException{Thread.sleep(500);}
+            },FILE_RELEASE_NANOS);
+            if(!released)throw new IOException(I18n.t("程序退出后文件仍被占用，等待超时，未替换程序。请关闭占用该安装目录的程序后，再点击「重启并应用更新」。","Files in the install folder were still in use long after the program exited; the program was not replaced. Close whatever holds them, then click Restart and apply update.")+fileUserDetails(r.home()));
             phase(r,I18n.t("正在替换并校验程序文件","Replacing and verifying program files"));
             apply(r.home(),r.staged());writeResult(r,Map.of("ok",true,"version",NativeBundle.manifest(r.home(),true).version(),"nonce",r.nonce()));
+            Files.deleteIfExists(r.control().resolve(WAITING));
             phase(r,I18n.t("安装完成","Installation finished"));
         }catch(Exception error){StringWriter details=new StringWriter();error.printStackTrace(new PrintWriter(details));phase(r,I18n.t("更新失败：","Update failed: ")+error);writeResult(r,Map.of("ok",false,"error",error.toString(),"details",details.toString(),"nonce",r.nonce()));throw error;}
         finally{
             if(Files.exists(pending)&&r.nonce().equals(Json.string(Json.parse(Files.readString(pending)),"nonce")))Files.delete(pending);
         }
     }
-    private static boolean installationRunning(Path home)throws IOException{
-        long[] users=installationFileUsers(home);if(users.length>0)return true;
+    /** Longest wait for the install folder's files once the program has exited. */
+    static final long FILE_RELEASE_NANOS=TimeUnit.MINUTES.toNanos(10);
+    interface ExitWait{boolean programRunning();boolean filesHeld()throws IOException;long now();void pause()throws InterruptedException;}
+    /**
+     * Waits for the program to exit and its files to be free. There is no limit while the
+     * program runs: the user may restart days after downloading. Only files still held after
+     * it exited are given up on. False when they were.
+     */
+    static boolean awaitExit(ExitWait wait,long timeoutNanos)throws IOException,InterruptedException{
+        while(wait.programRunning())wait.pause();
+        long exited=wait.now();
+        while(wait.filesHeld()){
+            if(wait.now()-exited>timeoutNanos)return false;
+            wait.pause();
+        }
+        return true;
+    }
+    /** Another process runs this installation's program. */
+    private static boolean otherInstance(Path home){
         Path executable=home.resolve(NativeBundle.platform().startsWith("windows")?"Lagless.exe":"Lagless");
         try(var processes=ProcessHandle.allProcesses()){
             return processes.anyMatch(p->p.pid()!=ProcessHandle.current().pid()&&p.info().command().map(command->Path.of(command).toAbsolutePath().normalize().equals(executable)).orElse(false));
@@ -211,8 +310,9 @@ public final class NativeUpdater {
         Path legacy=r.home().resolve(".updates");
         if(!legacy.equals(r.control()))try{Files.createDirectories(legacy);ProfileStore.atomicWrite(legacy.resolve("result.json"),text);}catch(IOException ignored){}
     }
-    public static boolean hasPending(){
-        try{Path pending=control(DesktopRuntime.home(),false).resolve("pending.json");return Files.isRegularFile(pending)&&alive(Json.number(Json.parse(Files.readString(pending)),-1,"helper"));}
+    public static boolean hasPending(){return hasPending(DesktopRuntime.home());}
+    static boolean hasPending(Path home){
+        try{Path pending=control(home,false).resolve("pending.json");return Files.isRegularFile(pending)&&helperAlive(Json.parse(Files.readString(pending)));}
         catch(Exception error){return false;}
     }
     public static String status(){
@@ -223,11 +323,13 @@ public final class NativeUpdater {
             return text+I18n.t("\n有待应用的更新，请点击「重启并应用更新」。","\nAn update is waiting; click Restart and apply update.")+state+I18n.t("\n更新日志：","\nUpdate log: ")+updates;}
             Path result=updates.resolve("result.json");if(Files.isRegularFile(result)){Object value=Json.parse(Files.readString(result));text+=Boolean.TRUE.equals(Json.get(value,"ok"))?I18n.t("\n上次安装成功：","\nLast install succeeded: ")+Json.string(value,"version"):I18n.t("\n上次更新失败：","\nLast update failed: ")+Json.string(value,"error");}
             else if(Files.exists(updates.resolve("pending.json")))text+=I18n.t("\n上次更新助手已退出，更新未确认完成。","\nThe last installer exited without confirming the update.")+failureDetails(updates);
+            Waiting waiting=waiting(home);
+            if(waiting!=null)text+=I18n.t("\n更新 ","\nUpdate ")+waiting.to()+I18n.t(" 已下载，点击「重启并应用更新」即可安装，无需重新下载。"," is downloaded. Click Restart and apply update to install it; it does not need downloading again.");
             text+=I18n.t("\n更新日志：","\nUpdate log: ")+updates;
         }catch(Exception error){text+=I18n.t("\n更新状态读取失败：","\nFailed to read update status: ")+error.getMessage();}return text;
     }
     public static void requestRestart()throws Exception{
-        if(!hasPending())throw new IOException(I18n.t("没有可应用的更新，请重新下载并确认安装助手就绪。","No update to apply; download again and make sure the installer is ready."));
+        if(!hasPending()&&!resume(DesktopRuntime.home(),false))throw new IOException(I18n.t("没有可应用的更新，请重新下载并确认安装助手就绪。","No update to apply; download again and make sure the installer is ready."));
         Object pending=Json.parse(Files.readString(control(DesktopRuntime.home(),false).resolve("pending.json")));
         Path request=Path.of(Objects.requireNonNull(Json.string(pending,"request")));Request r=readRequest(request);
         Path helperRoot=r.control().resolve("installer-"+r.nonce());
@@ -235,26 +337,46 @@ public final class NativeUpdater {
         new ProcessBuilder(helper.toString(),"--restart-after-update",request.toString()).directory(helper.getParent().toFile())
                 .redirectOutput(r.control().resolve("restart.stdout.log").toFile()).redirectError(r.control().resolve("restart.stderr.log").toFile()).start();
     }
-    /** A launch while replacement is pending must release the old executable. */
-    public static boolean handoffPendingLaunch()throws Exception{if(!hasPending())return false;requestRestart();return true;}
+    /**
+     * A launch after the program exited, with an update waiting, installs it and lets the
+     * restarted program open: this process must not hold the old executable. While another
+     * window of the program is open, the installer goes on waiting for that one, and this
+     * launch opens normally. Whatever goes wrong here, the program still has to open.
+     */
+    public static boolean handoffPendingLaunch(){
+        try{
+            Path home=DesktopRuntime.home();
+            if(otherInstance(home)||!hasPending(home)&&!resume(home,true))return false;
+            requestRestart();return true;
+        }catch(Exception|LinkageError error){error.printStackTrace(System.err);return false;}
+    }
     public static void restartAfterUpdate(Path request)throws Exception{
         Request r=readRequest(request);
         try(var channel=FileChannel.open(r.control().resolve("restart.lock"),StandardOpenOption.CREATE,StandardOpenOption.WRITE)){
             FileLock lock;try{lock=channel.tryLock();}catch(OverlappingFileLockException ignored){return;}if(lock==null)return;
-            try(lock){long deadline=System.nanoTime()+TimeUnit.MINUTES.toNanos(11);
+            try(lock){
                 while(true){
+                    // Looked at before the result: an installer that wrote one and exited is not lost.
+                    boolean gone=!installerRunning(r);
                     Path result=r.control().resolve("result.json");
                     if(Files.isRegularFile(result)){
                         Object value=Json.parse(Files.readString(result));
                         if(r.nonce().equals(Json.string(value,"nonce"))){
                             if(!Boolean.TRUE.equals(Json.get(value,"ok")))throw new IOException(I18n.t("更新未成功，旧版已保留：","Update failed; the old version is kept: ")+Json.string(value,"error")+I18n.t("\n日志：","\nLog: ")+r.control());
-                            if(!Files.exists(r.control().resolve("pending.json"))){NativeBundle.Manifest installed=NativeBundle.validate(r.home(),true);new ProcessBuilder(r.home().resolve(installed.executable()).toString()).directory(r.home().toFile()).start();return;}
+                            if(gone){NativeBundle.Manifest installed=NativeBundle.validate(r.home(),true);new ProcessBuilder(r.home().resolve(installed.executable()).toString()).directory(r.home().toFile()).start();return;}
                         }
                     }
-                    if(System.nanoTime()>deadline)throw new IOException(I18n.t("等待更新完成超时。日志：","Timed out waiting for the update to finish. Log: ")+r.control());Thread.sleep(250);
+                    // Other windows may keep the installer waiting for as long as they stay open.
+                    if(gone)throw new IOException(I18n.t("安装助手已退出，更新未完成，旧版已保留。日志：","The installer exited before finishing; the old version is kept. Log: ")+r.control());
+                    Thread.sleep(250);
                 }
             }
         }
+    }
+    private static boolean installerRunning(Request r){
+        try{Path pending=r.control().resolve("pending.json");if(!Files.isRegularFile(pending))return false;
+            Object value=Json.parse(Files.readString(pending));return r.nonce().equals(Json.string(value,"nonce"))&&helperAlive(value);}
+        catch(Exception error){return false;}
     }
     public static synchronized void apply(Path home,Path staged)throws Exception {
         NativeBundle.Manifest next=NativeBundle.validate(staged,true),old=NativeBundle.validate(home,true);
